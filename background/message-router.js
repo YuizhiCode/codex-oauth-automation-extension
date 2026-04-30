@@ -648,6 +648,22 @@
           return { ok: true };
         }
 
+        case 'DELETE_REGISTERED_ACCOUNT': {
+          const email = String(message.payload?.email || '').trim();
+          if (!email) {
+            throw new Error('缺少待删除的复用号池邮箱。');
+          }
+          const removed = await removeRegisteredAccountFromPool(email);
+          if (!removed) {
+            throw new Error(`复用号池中不存在 ${email}。`);
+          }
+          const nextState = await getState();
+          return {
+            ok: true,
+            accounts: Array.isArray(nextState?.accounts) ? nextState.accounts : [],
+          };
+        }
+
         case 'SKIP_STEP': {
           const step = Number(message.payload?.step);
           return await skipStep(step);

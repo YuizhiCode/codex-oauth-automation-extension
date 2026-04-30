@@ -344,7 +344,32 @@
       </div>
       <div class="data-row registered-account-pool-row" id="row-registered-account-pool">
         <span class="data-label">复用账号池</span>
-        <div id="registered-account-pool-list" class="registered-account-pool-list"></div>
+        <div class="registered-account-pool-panel">
+          <div class="registered-account-pool-toolbar">
+            <span id="registered-account-pool-meta" class="data-value registered-account-pool-meta-text">共 0 条</span>
+            <input
+              type="search"
+              id="input-registered-account-pool-search"
+              class="data-input registered-account-pool-search"
+              placeholder="搜索邮箱"
+            />
+          </div>
+          <div class="registered-account-pool-bulkbar">
+            <label class="option-toggle registered-account-pool-select-all" for="checkbox-registered-account-pool-select-all">
+              <input type="checkbox" id="checkbox-registered-account-pool-select-all" />
+              <span id="registered-account-pool-selection-summary">已选 0 个</span>
+            </label>
+            <div class="registered-account-pool-actions">
+              <button id="btn-registered-account-pool-clear-search" class="btn btn-ghost btn-xs" type="button">清空筛选</button>
+              <button id="btn-registered-account-pool-clear-selection" class="btn btn-ghost btn-xs" type="button">清空已选</button>
+              <button id="btn-delete-selected-registered-accounts" class="btn btn-ghost btn-xs" type="button" hidden>批量删除</button>
+            </div>
+          </div>
+          <div id="registered-account-pool-list" class="registered-account-pool-list"></div>
+          <div class="registered-account-pool-footer">
+            <button id="btn-registered-account-pool-load-more" class="btn btn-outline btn-xs" type="button" hidden>加载更多</button>
+          </div>
+        </div>
       </div>
       <div class="data-row module-divider-start" id="row-auto-delay-settings">
         <span class="data-label">延迟</span>

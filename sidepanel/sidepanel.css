@@ -1589,6 +1589,49 @@ header {
   align-items: flex-start;
 }
 
+.registered-account-pool-panel {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.registered-account-pool-toolbar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.registered-account-pool-meta-text {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.registered-account-pool-search {
+  flex: 1 1 180px;
+  min-width: 160px;
+}
+
+.registered-account-pool-bulkbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.registered-account-pool-select-all {
+  flex: 0 0 auto;
+}
+
+.registered-account-pool-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 .registered-account-pool-list {
   width: 100%;
   display: flex;
@@ -1599,7 +1642,10 @@ header {
 .registered-account-pool-empty {
   color: var(--text-muted);
   font-size: 12px;
-  padding: 8px 0;
+  padding: 12px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  text-align: center;
 }
 
 .registered-account-pool-item {
@@ -1609,11 +1655,35 @@ header {
   padding: 8px 10px;
 }
 
+.registered-account-pool-select-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  margin-bottom: 6px;
+}
+
+.registered-account-pool-option {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.registered-account-pool-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .registered-account-pool-email {
   color: var(--text-primary);
   font-size: 12px;
   font-weight: 600;
   word-break: break-all;
+}
+
+.registered-account-pool-delete {
+  min-width: 0;
+  flex: 0 0 auto;
 }
 
 .registered-account-pool-meta {
@@ -1623,6 +1693,11 @@ header {
   margin-top: 4px;
   color: var(--text-muted);
   font-size: 11px;
+}
+
+.registered-account-pool-footer {
+  display: flex;
+  justify-content: center;
 }
 
 .hotmail-status-chip {

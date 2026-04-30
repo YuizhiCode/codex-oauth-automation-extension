@@ -203,6 +203,7 @@ return {
   exportSettingsBundle,
   importSettingsBundle,
   saveRegisteredAccountAfterProfileSuccess,
+  removeRegisteredAccountFromPool,
   prepareRegisteredAccountResumeForAutoRun,
   normalizeRegisteredAccountRecord,
   getRegisteredAccountMailConfigRestorePayload,
@@ -303,4 +304,27 @@ test('settings export and import include the registered account reuse pool', asy
   assert.equal(currentState.accounts[0].email, 'reuse@2925.com');
   assert.equal(currentState.accounts[0].mailConfig.currentMail2925AccountId, 'mail2925-account-1');
   assert.equal(broadcasts.at(-1).accounts[0].mailConfig.mailProvider, '2925');
+});
+
+test('registered account pool can delete one reusable account by email', async () => {
+  const api = createApi({
+    accounts: [{
+      email: 'keep@example.com',
+      password: 'Keep123!',
+      createdAt: 1,
+    }, {
+      email: 'remove@example.com',
+      password: 'Remove123!',
+      createdAt: 2,
+    }],
+  });
+
+  const removed = await api.removeRegisteredAccountFromPool('remove@example.com');
+  const { currentState, broadcasts } = api.snapshot();
+
+  assert.equal(removed, true);
+  assert.equal(currentState.accounts.length, 1);
+  assert.equal(currentState.accounts[0].email, 'keep@example.com');
+  assert.equal(broadcasts.at(-1).accounts.length, 1);
+  assert.equal(broadcasts.at(-1).accounts[0].email, 'keep@example.com');
 });

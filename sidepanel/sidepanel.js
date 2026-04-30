@@ -73,6 +73,14 @@ const btnAutoRunNow = document.getElementById('btn-auto-run-now');
 const btnAutoCancelSchedule = document.getElementById('btn-auto-cancel-schedule');
 const btnClearLog = document.getElementById('btn-clear-log');
 const registeredAccountPoolList = document.getElementById('registered-account-pool-list');
+const registeredAccountPoolMeta = document.getElementById('registered-account-pool-meta');
+const inputRegisteredAccountPoolSearch = document.getElementById('input-registered-account-pool-search');
+const checkboxRegisteredAccountPoolSelectAll = document.getElementById('checkbox-registered-account-pool-select-all');
+const registeredAccountPoolSelectionSummary = document.getElementById('registered-account-pool-selection-summary');
+const btnRegisteredAccountPoolClearSearch = document.getElementById('btn-registered-account-pool-clear-search');
+const btnRegisteredAccountPoolClearSelection = document.getElementById('btn-registered-account-pool-clear-selection');
+const btnDeleteSelectedRegisteredAccounts = document.getElementById('btn-delete-selected-registered-accounts');
+const btnRegisteredAccountPoolLoadMore = document.getElementById('btn-registered-account-pool-load-more');
 const configMenuShell = document.getElementById('config-menu-shell');
 const btnConfigMenu = document.getElementById('btn-config-menu');
 const configMenu = document.getElementById('config-menu');
@@ -361,6 +369,10 @@ let currentPlusModeEnabled = false;
 let heroSmsCountrySelectionOrder = [];
 let heroSmsCountryMenuSearchKeyword = '';
 const heroSmsCountrySearchTextById = new Map();
+const REGISTERED_ACCOUNT_POOL_PAGE_SIZE = 30;
+let registeredAccountPoolSearchKeyword = '';
+let registeredAccountPoolVisibleCount = REGISTERED_ACCOUNT_POOL_PAGE_SIZE;
+let registeredAccountPoolSelectedEmails = new Set();
 let stepDefinitions = getStepDefinitionsForMode(false);
 let STEP_IDS = stepDefinitions.map((step) => Number(step.id)).filter(Number.isFinite);
 let STEP_DEFAULT_STATUSES = Object.fromEntries(STEP_IDS.map((stepId) => [stepId, 'pending']));
@@ -5024,23 +5036,132 @@ function formatRegisteredAccountPoolTime(value) {
   });
 }
 
+function isRegisteredAccountPoolInteractionLocked() {
+  const statuses = getStepStatuses();
+  const anyRunning = Object.values(statuses).some((status) => status === 'running');
+  return anyRunning || isAutoRunLockedPhase() || isAutoRunPausedPhase() || isAutoRunScheduledPhase();
+}
+
+function getRegisteredAccountPoolDisplayState(state = latestState) {
+  const accounts = Array.isArray(state?.accounts) ? state.accounts.slice() : [];
+  const sortedAccounts = accounts.sort((left, right) => {
+    const leftTime = Number(left?.updatedAt || left?.createdAt || 0);
+    const rightTime = Number(right?.updatedAt || right?.createdAt || 0);
+    return rightTime - leftTime;
+  });
+  const keyword = String(registeredAccountPoolSearchKeyword || '').trim().toLowerCase();
+  const filteredAccounts = keyword
+    ? sortedAccounts.filter((account) => {
+      const email = String(account?.email || '').trim().toLowerCase();
+      const provider = getRegisteredAccountMailProviderLabel(account).toLowerCase();
+      return email.includes(keyword) || provider.includes(keyword);
+    })
+    : sortedAccounts;
+  const visibleCount = Math.max(REGISTERED_ACCOUNT_POOL_PAGE_SIZE, Math.floor(Number(registeredAccountPoolVisibleCount) || REGISTERED_ACCOUNT_POOL_PAGE_SIZE));
+  const visibleAccounts = filteredAccounts.slice(0, visibleCount);
+  const hasMore = filteredAccounts.length > visibleAccounts.length;
+  return {
+    totalCount: sortedAccounts.length,
+    filteredCount: filteredAccounts.length,
+    visibleCount: visibleAccounts.length,
+    hasMore,
+    visibleAccounts,
+    filteredAccounts,
+  };
+}
+
+function syncRegisteredAccountPoolSelectionState(state = latestState) {
+  const { visibleAccounts } = getRegisteredAccountPoolDisplayState(state);
+  const allAccounts = Array.isArray(state?.accounts) ? state.accounts : [];
+  const locked = isRegisteredAccountPoolInteractionLocked();
+  const allowedEmails = new Set(allAccounts.map((account) => String(account?.email || '').trim().toLowerCase()).filter(Boolean));
+  registeredAccountPoolSelectedEmails = new Set(
+    Array.from(registeredAccountPoolSelectedEmails).filter((email) => allowedEmails.has(email))
+  );
+
+  const visibleEmails = visibleAccounts
+    .map((account) => String(account?.email || '').trim().toLowerCase())
+    .filter(Boolean);
+  const selectedVisibleCount = visibleEmails.filter((email) => registeredAccountPoolSelectedEmails.has(email)).length;
+  if (checkboxRegisteredAccountPoolSelectAll) {
+    checkboxRegisteredAccountPoolSelectAll.checked = visibleEmails.length > 0 && selectedVisibleCount === visibleEmails.length;
+    checkboxRegisteredAccountPoolSelectAll.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < visibleEmails.length;
+    checkboxRegisteredAccountPoolSelectAll.disabled = visibleEmails.length === 0 || locked;
+  }
+  if (registeredAccountPoolSelectionSummary) {
+    registeredAccountPoolSelectionSummary.textContent = `已选 ${registeredAccountPoolSelectedEmails.size} 个`;
+  }
+  if (btnRegisteredAccountPoolClearSelection) {
+    btnRegisteredAccountPoolClearSelection.disabled = registeredAccountPoolSelectedEmails.size === 0;
+  }
+  if (btnRegisteredAccountPoolClearSearch) {
+    btnRegisteredAccountPoolClearSearch.disabled = !registeredAccountPoolSearchKeyword;
+  }
+  if (btnDeleteSelectedRegisteredAccounts) {
+    const selectedCount = registeredAccountPoolSelectedEmails.size;
+    btnDeleteSelectedRegisteredAccounts.hidden = selectedCount === 0;
+    btnDeleteSelectedRegisteredAccounts.textContent = selectedCount > 0 ? `批量删除（${selectedCount}）` : '批量删除';
+    btnDeleteSelectedRegisteredAccounts.disabled = selectedCount === 0 || locked;
+  }
+  if (inputRegisteredAccountPoolSearch) {
+    inputRegisteredAccountPoolSearch.disabled = locked;
+  }
+  if (btnRegisteredAccountPoolLoadMore) {
+    btnRegisteredAccountPoolLoadMore.disabled = locked;
+  }
+}
+
 function renderRegisteredAccountPool(state = latestState) {
   if (!registeredAccountPoolList) {
     return;
   }
-  const accounts = Array.isArray(state?.accounts) ? state.accounts : [];
-  if (!accounts.length) {
-    registeredAccountPoolList.innerHTML = '<div class="registered-account-pool-empty">暂无待复用账号</div>';
+  const {
+    totalCount,
+    filteredCount,
+    visibleCount,
+    hasMore,
+    visibleAccounts,
+  } = getRegisteredAccountPoolDisplayState(state);
+  if (registeredAccountPoolMeta) {
+    registeredAccountPoolMeta.textContent = filteredCount === totalCount
+      ? `共 ${totalCount} 条，当前显示 ${visibleCount} 条`
+      : `共 ${totalCount} 条，匹配 ${filteredCount} 条，当前显示 ${visibleCount} 条`;
+  }
+  if (!visibleAccounts.length) {
+    registeredAccountPoolList.innerHTML = totalCount > 0
+      ? '<div class="registered-account-pool-empty">没有匹配的复用账号</div>'
+      : '<div class="registered-account-pool-empty">暂无待复用账号</div>';
+    if (btnRegisteredAccountPoolLoadMore) {
+      btnRegisteredAccountPoolLoadMore.hidden = true;
+    }
+    syncRegisteredAccountPoolSelectionState(state);
     return;
   }
-  registeredAccountPoolList.innerHTML = accounts.map((account) => {
+  registeredAccountPoolList.innerHTML = visibleAccounts.map((account) => {
     const email = String(account?.email || '').trim() || '(无邮箱)';
+    const normalizedEmail = email.toLowerCase();
     const providerLabel = getRegisteredAccountMailProviderLabel(account);
     const updatedAt = formatRegisteredAccountPoolTime(account?.updatedAt || account?.createdAt);
     const timeText = updatedAt ? `<span>${escapeHtml(updatedAt)}</span>` : '';
+    const checked = registeredAccountPoolSelectedEmails.has(normalizedEmail) ? 'checked' : '';
+    const lockedAttr = isRegisteredAccountPoolInteractionLocked() ? 'disabled' : '';
     return `
       <div class="registered-account-pool-item">
-        <div class="registered-account-pool-email">${escapeHtml(email)}</div>
+        <div class="registered-account-pool-select-row">
+          <label class="option-toggle registered-account-pool-option">
+            <input type="checkbox" data-registered-account-select="${escapeHtml(email)}" ${checked} ${lockedAttr} />
+            <span>选择</span>
+          </label>
+        </div>
+        <div class="registered-account-pool-head">
+          <div class="registered-account-pool-email">${escapeHtml(email)}</div>
+          <button
+            type="button"
+            class="btn btn-ghost btn-xs registered-account-pool-delete"
+            data-registered-account-delete="${escapeHtml(email)}"
+            ${lockedAttr}
+          >删除</button>
+        </div>
         <div class="registered-account-pool-meta">
           <span>${escapeHtml(providerLabel)}</span>
           ${timeText}
@@ -5048,6 +5169,95 @@ function renderRegisteredAccountPool(state = latestState) {
       </div>
     `;
   }).join('');
+  if (btnRegisteredAccountPoolLoadMore) {
+    btnRegisteredAccountPoolLoadMore.hidden = !hasMore;
+    btnRegisteredAccountPoolLoadMore.textContent = hasMore
+      ? `加载更多（剩余 ${Math.max(0, filteredCount - visibleCount)} 条）`
+      : '已全部加载';
+  }
+  syncRegisteredAccountPoolSelectionState(state);
+}
+
+async function deleteRegisteredAccountFromPool(email) {
+  const normalizedEmail = String(email || '').trim();
+  if (!normalizedEmail) {
+    return false;
+  }
+  if (isRegisteredAccountPoolInteractionLocked()) {
+    throw new Error('流程运行中，暂时不能删除复用号池账号。');
+  }
+  const confirmed = await openConfirmModal({
+    title: '删除复用号池账号',
+    message: `确认从复用号池删除 ${normalizedEmail} 吗？`,
+    confirmLabel: '确认删除',
+    confirmVariant: 'btn-danger',
+  });
+  if (!confirmed) {
+    return false;
+  }
+
+  const response = await chrome.runtime.sendMessage({
+    type: 'DELETE_REGISTERED_ACCOUNT',
+    source: 'sidepanel',
+    payload: { email: normalizedEmail },
+  });
+  if (response?.error) {
+    throw new Error(response.error);
+  }
+
+  const nextAccounts = Array.isArray(response?.accounts)
+    ? response.accounts
+    : Array.isArray(latestState?.accounts)
+      ? latestState.accounts.filter((account) => String(account?.email || '').trim().toLowerCase() !== normalizedEmail.toLowerCase())
+      : [];
+  syncLatestState({ accounts: nextAccounts });
+  renderRegisteredAccountPool({ ...latestState, accounts: nextAccounts });
+  showToast(`已从复用号池删除 ${normalizedEmail}`, 'success', 1800);
+  return true;
+}
+
+async function deleteSelectedRegisteredAccounts() {
+  const selectedEmails = Array.from(registeredAccountPoolSelectedEmails);
+  if (!selectedEmails.length) {
+    return false;
+  }
+  if (isRegisteredAccountPoolInteractionLocked()) {
+    throw new Error('流程运行中，暂时不能批量删除复用号池账号。');
+  }
+  const confirmed = await openConfirmModal({
+    title: '批量删除复用号池账号',
+    message: `确认批量删除已选中的 ${selectedEmails.length} 个复用号池账号吗？`,
+    confirmLabel: '确认删除',
+    confirmVariant: 'btn-danger',
+  });
+  if (!confirmed) {
+    return false;
+  }
+
+  let removedCount = 0;
+  for (const email of selectedEmails) {
+    const response = await chrome.runtime.sendMessage({
+      type: 'DELETE_REGISTERED_ACCOUNT',
+      source: 'sidepanel',
+      payload: { email },
+    });
+    if (response?.error) {
+      throw new Error(response.error);
+    }
+    removedCount += 1;
+  }
+
+  const nextAccounts = Array.isArray(latestState?.accounts)
+    ? latestState.accounts.filter((account) => {
+      const email = String(account?.email || '').trim().toLowerCase();
+      return !registeredAccountPoolSelectedEmails.has(email);
+    })
+    : [];
+  registeredAccountPoolSelectedEmails = new Set();
+  syncLatestState({ accounts: nextAccounts });
+  renderRegisteredAccountPool({ ...latestState, accounts: nextAccounts });
+  showToast(`已批量删除 ${removedCount} 个复用号池账号`, 'success', 1800);
+  return true;
 }
 
 function getMailProviderLoginConfig(provider = selectMailProvider.value) {
@@ -7877,6 +8087,69 @@ btnHeroSmsPricePreview?.addEventListener('click', async () => {
   }
 });
 
+inputRegisteredAccountPoolSearch?.addEventListener('input', () => {
+  if (isRegisteredAccountPoolInteractionLocked()) {
+    inputRegisteredAccountPoolSearch.value = registeredAccountPoolSearchKeyword;
+    showToast('流程运行中，暂时不能修改复用号池筛选。', 'warn', 1800);
+    return;
+  }
+  registeredAccountPoolSearchKeyword = String(inputRegisteredAccountPoolSearch.value || '').trim();
+  registeredAccountPoolVisibleCount = REGISTERED_ACCOUNT_POOL_PAGE_SIZE;
+  renderRegisteredAccountPool(latestState);
+});
+
+checkboxRegisteredAccountPoolSelectAll?.addEventListener('change', () => {
+  if (isRegisteredAccountPoolInteractionLocked()) {
+    checkboxRegisteredAccountPoolSelectAll.checked = false;
+    checkboxRegisteredAccountPoolSelectAll.indeterminate = false;
+    showToast('流程运行中，暂时不能修改复用号池选择。', 'warn', 1800);
+    return;
+  }
+  const { visibleAccounts } = getRegisteredAccountPoolDisplayState(latestState);
+  const visibleEmails = visibleAccounts
+    .map((account) => String(account?.email || '').trim().toLowerCase())
+    .filter(Boolean);
+  if (checkboxRegisteredAccountPoolSelectAll.checked) {
+    visibleEmails.forEach((email) => registeredAccountPoolSelectedEmails.add(email));
+  } else {
+    visibleEmails.forEach((email) => registeredAccountPoolSelectedEmails.delete(email));
+  }
+  renderRegisteredAccountPool(latestState);
+});
+
+btnDeleteSelectedRegisteredAccounts?.addEventListener('click', () => {
+  deleteSelectedRegisteredAccounts().catch((error) => {
+    showToast(`批量删除复用号池账号失败：${error?.message || error}`, 'error');
+  });
+});
+
+btnRegisteredAccountPoolClearSearch?.addEventListener('click', () => {
+  if (isRegisteredAccountPoolInteractionLocked()) {
+    showToast('流程运行中，暂时不能清空复用号池筛选。', 'warn', 1800);
+    return;
+  }
+  registeredAccountPoolSearchKeyword = '';
+  registeredAccountPoolVisibleCount = REGISTERED_ACCOUNT_POOL_PAGE_SIZE;
+  if (inputRegisteredAccountPoolSearch) {
+    inputRegisteredAccountPoolSearch.value = '';
+  }
+  renderRegisteredAccountPool(latestState);
+});
+
+btnRegisteredAccountPoolClearSelection?.addEventListener('click', () => {
+  registeredAccountPoolSelectedEmails = new Set();
+  renderRegisteredAccountPool(latestState);
+});
+
+btnRegisteredAccountPoolLoadMore?.addEventListener('click', () => {
+  if (isRegisteredAccountPoolInteractionLocked()) {
+    showToast('流程运行中，暂时不能展开更多复用号池数据。', 'warn', 1800);
+    return;
+  }
+  registeredAccountPoolVisibleCount += REGISTERED_ACCOUNT_POOL_PAGE_SIZE;
+  renderRegisteredAccountPool(latestState);
+});
+
 inputPhoneReplacementLimit?.addEventListener('input', () => {
   markSettingsDirty(true);
   scheduleSettingsAutoSave();
@@ -8579,6 +8852,46 @@ window.addEventListener('resize', () => {
 document.addEventListener('scroll', () => {
   positionContributionUpdateHint();
 }, true);
+
+registeredAccountPoolList?.addEventListener('click', (event) => {
+  const target = event.target instanceof Element ? event.target.closest('[data-registered-account-delete]') : null;
+  if (!target) {
+    return;
+  }
+  if (isRegisteredAccountPoolInteractionLocked()) {
+    showToast('流程运行中，暂时不能删除复用号池账号。', 'warn', 1800);
+    return;
+  }
+  const email = String(target.getAttribute('data-registered-account-delete') || '').trim();
+  if (!email) {
+    return;
+  }
+  deleteRegisteredAccountFromPool(email).catch((error) => {
+    showToast(`删除复用号池账号失败：${error?.message || error}`, 'error');
+  });
+});
+
+registeredAccountPoolList?.addEventListener('change', (event) => {
+  const target = event.target instanceof Element ? event.target.closest('[data-registered-account-select]') : null;
+  if (!target) {
+    return;
+  }
+  if (isRegisteredAccountPoolInteractionLocked()) {
+    target.checked = !target.checked;
+    showToast('流程运行中，暂时不能修改复用号池选择。', 'warn', 1800);
+    return;
+  }
+  const email = String(target.getAttribute('data-registered-account-select') || '').trim().toLowerCase();
+  if (!email) {
+    return;
+  }
+  if (target.checked) {
+    registeredAccountPoolSelectedEmails.add(email);
+  } else {
+    registeredAccountPoolSelectedEmails.delete(email);
+  }
+  syncRegisteredAccountPoolSelectionState(latestState);
+});
 
 // ============================================================
 // Init
