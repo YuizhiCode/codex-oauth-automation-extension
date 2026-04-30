@@ -200,8 +200,11 @@ const inputAutoDelayEnabled = { checked: false };
 const inputAutoDelayMinutes = { value: '30' };
 const inputAutoStepDelaySeconds = { value: '' };
 const inputVerificationResendCount = { value: '4' };
+const inputHeroSmsMinPrice = { value: '0.05' };
+const inputHeroSmsMaxPrice = { value: '' };
 const DEFAULT_VERIFICATION_RESEND_COUNT = 4;
 const DEFAULT_PHONE_VERIFICATION_REPLACEMENT_LIMIT = 3;
+const DEFAULT_HERO_SMS_MIN_PRICE = '0.05';
 function getCloudflareDomainsFromState() {
   return { domains: [], activeDomain: '' };
 }
@@ -225,6 +228,8 @@ function normalizeAutoRunThreadIntervalMinutes(value) { return Number(value) || 
 function normalizeAutoDelayMinutes(value) { return Number(value) || 30; }
 function normalizeAutoStepDelaySeconds(value) { return value === '' ? null : Number(value); }
 function normalizeVerificationResendCount(value, fallback) { return Number(value) || fallback; }
+function normalizeHeroSmsMaxPriceValue(value = '') { return String(value || '').trim(); }
+function normalizeHeroSmsMinPriceValue(value = '', fallback = DEFAULT_HERO_SMS_MIN_PRICE) { return String(value || fallback).trim(); }
 ${bundle}
 return { collectSettingsPayload };
 `)(normalizeIcloudTargetMailboxType, normalizeIcloudForwardMailProvider);

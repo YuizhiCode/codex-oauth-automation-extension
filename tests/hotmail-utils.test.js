@@ -185,6 +185,21 @@ test('extractVerificationCode returns first six-digit code from multilingual mai
   assert.equal(extractVerificationCode('No code here'), null);
 });
 
+test('extractVerificationCode ignores mail timestamps and unrelated standalone numbers', () => {
+  assert.equal(
+    extractVerificationCode('OpenAI verification message received at 2026-04-30 14:08:36'),
+    null
+  );
+  assert.equal(
+    extractVerificationCode('OpenAI security notice 140836'),
+    null
+  );
+  assert.equal(
+    extractVerificationCode('Enter this temporary verification code to continue: 214203'),
+    '214203'
+  );
+});
+
 test('extractVerificationCodeFromMessage reads code from the latest message subject or preview', () => {
   assert.equal(
     extractVerificationCodeFromMessage({

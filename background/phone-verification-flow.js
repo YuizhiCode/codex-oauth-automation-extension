@@ -523,13 +523,45 @@
         return candidates;
       }
 
-      const cost = normalizeHeroSmsPrice(payload.cost);
+      for (const [key, value] of Object.entries(payload)) {
+        const keyedPrice = normalizeHeroSmsPrice(key);
+        if (keyedPrice !== null && keyedPrice > 0 && keyedPrice <= 1) {
+          const directCount = Number(value);
+          const countValue = value && typeof value === 'object'
+            ? (value.count ?? value.physicalCount ?? value.available ?? value.total)
+            : undefined;
+          const nestedCount = Number(countValue);
+          const hasDirectCount = Number.isFinite(directCount);
+          const hasNestedCount = countValue !== undefined && Number.isFinite(nestedCount);
+          if ((!hasDirectCount && !hasNestedCount) || directCount > 0 || nestedCount > 0) {
+            candidates.push(keyedPrice);
+          }
+        }
+      }
+
+      const cost = normalizeHeroSmsPrice(
+        payload.cost
+        ?? payload.price
+        ?? payload.amount
+        ?? payload.maxPrice
+        ?? payload.max_price
+      );
       if (cost !== null) {
         const count = Number(payload.count);
         const physicalCount = Number(payload.physicalCount);
+        const available = Number(payload.available);
+        const total = Number(payload.total);
         const hasCount = Number.isFinite(count);
         const hasPhysicalCount = Number.isFinite(physicalCount);
-        if ((!hasCount && !hasPhysicalCount) || count > 0 || physicalCount > 0) {
+        const hasAvailable = Number.isFinite(available);
+        const hasTotal = Number.isFinite(total);
+        if (
+          (!hasCount && !hasPhysicalCount && !hasAvailable && !hasTotal)
+          || count > 0
+          || physicalCount > 0
+          || available > 0
+          || total > 0
+        ) {
           candidates.push(cost);
         }
       }
@@ -594,10 +626,10 @@
       for (let attempt = 1; attempt <= DEFAULT_PHONE_PRICE_LOOKUP_ATTEMPTS; attempt += 1) {
         try {
           const payload = await fetchHeroSmsPayload(config, {
-            action: 'getPrices',
+            action: 'serviceCountRent',
             service: HERO_SMS_SERVICE_CODE,
             country: countryConfig.id,
-          }, 'HeroSMS getPrices');
+          }, 'HeroSMS serviceCountRent');
           const price = findLowestHeroSmsPrice(payload);
           if (price !== null) {
             return price;
@@ -630,15 +662,16 @@
 
     async function resolvePhoneActivationPricePlan(config, countryConfig, state = {}) {
       const userLimit = normalizeHeroSmsPriceLimit(state.heroSmsMaxPrice);
+      const userMinPrice = normalizeHeroSmsPriceLimit(state.heroSmsMinPrice);
       let priceCandidates = [];
 
       for (let attempt = 1; attempt <= DEFAULT_PHONE_PRICE_LOOKUP_ATTEMPTS; attempt += 1) {
         try {
           const payload = await fetchHeroSmsPayload(config, {
-            action: 'getPrices',
+            action: 'serviceCountRent',
             service: HERO_SMS_SERVICE_CODE,
             country: countryConfig.id,
-          }, 'HeroSMS getPrices');
+          }, 'HeroSMS serviceCountRent');
           priceCandidates = buildSortedUniquePriceCandidates(
             collectHeroSmsPriceCandidates(payload, [])
           );
@@ -651,24 +684,34 @@
       }
 
       const minCatalogPrice = priceCandidates.length > 0 ? priceCandidates[0] : null;
+      const minBoundedCandidates = userMinPrice !== null
+        ? priceCandidates.filter((price) => price >= userMinPrice)
+        : priceCandidates;
+      if (userMinPrice !== null && priceCandidates.length > 0 && minBoundedCandidates.length === 0) {
+        const minLimitedPlan = { prices: [], userLimit, userMinPrice, minCatalogPrice };
+        await persistHeroSmsPricePlanSnapshot(countryConfig, minLimitedPlan);
+        return minLimitedPlan;
+      }
       if (userLimit !== null) {
-        const bounded = priceCandidates.filter((price) => price <= userLimit);
+        const bounded = minBoundedCandidates.filter((price) => price <= userLimit);
         if (bounded.length > 0) {
-          const boundedPlan = { prices: bounded, userLimit, minCatalogPrice };
+          const boundedPlan = { prices: bounded, userLimit, userMinPrice, minCatalogPrice };
           await persistHeroSmsPricePlanSnapshot(countryConfig, boundedPlan);
           return boundedPlan;
         }
-        const userLimitedPlan = { prices: [userLimit], userLimit, minCatalogPrice };
+        const userLimitedPlan = userMinPrice !== null && userLimit < userMinPrice
+          ? { prices: [], userLimit, userMinPrice, minCatalogPrice }
+          : { prices: [userLimit], userLimit, userMinPrice, minCatalogPrice };
         await persistHeroSmsPricePlanSnapshot(countryConfig, userLimitedPlan);
         return userLimitedPlan;
       }
 
-      if (priceCandidates.length > 0) {
-        const plan = { prices: priceCandidates, userLimit: null, minCatalogPrice };
+      if (minBoundedCandidates.length > 0) {
+        const plan = { prices: minBoundedCandidates, userLimit: null, userMinPrice, minCatalogPrice };
         await persistHeroSmsPricePlanSnapshot(countryConfig, plan);
         return plan;
       }
-      const fallbackPlan = { prices: [null], userLimit: null, minCatalogPrice: null };
+      const fallbackPlan = { prices: [null], userLimit: null, userMinPrice, minCatalogPrice: null };
       await persistHeroSmsPricePlanSnapshot(countryConfig, fallbackPlan);
       return fallbackPlan;
     }
@@ -752,7 +795,7 @@
         }
       }
       const acquirePriority = normalizeHeroSmsAcquirePriority(state?.heroSmsAcquirePriority);
-      const requestActions = ['getNumber', 'getNumberV2'];
+      const requestActions = ['getNumber'];
       const configuredAcquireRounds = normalizePhoneActivationRetryRounds(
         state?.heroSmsActivationRetryRounds
       );
@@ -819,12 +862,20 @@
 
         for (const attempt of countryAttempts) {
           const countryConfig = attempt.countryConfig;
-          const buildFallbackActivation = (requestAction) => ({
+          const buildFallbackActivation = (_requestAction) => ({
             countryId: countryConfig.id,
-            ...(requestAction === 'getNumberV2' ? { statusAction: 'getStatusV2' } : {}),
           });
           const pricePlan = attempt.pricePlan || await resolvePhoneActivationPricePlan(config, countryConfig, state);
           let noNumbersObservedInCountry = false;
+
+          if (!Array.isArray(pricePlan.prices) || pricePlan.prices.length === 0) {
+            noNumbersByCountry.push(
+              pricePlan.userMinPrice !== null && pricePlan.minCatalogPrice !== null
+                ? `${countryConfig.label}: no numbers within minPrice=${pricePlan.userMinPrice}; lowest listed=${pricePlan.minCatalogPrice}`
+                : `${countryConfig.label}: no matching price tier`
+            );
+            continue;
+          }
 
           for (const maxPrice of pricePlan.prices) {
             for (const requestAction of requestActions) {
@@ -879,6 +930,14 @@
             ) {
               noNumbersByCountry.push(
                 `${countryConfig.label}: no numbers within maxPrice=${pricePlan.userLimit}; lowest listed=${pricePlan.minCatalogPrice}`
+              );
+            } else if (
+              pricePlan.userMinPrice !== null
+              && pricePlan.minCatalogPrice !== null
+              && pricePlan.prices.length === 0
+            ) {
+              noNumbersByCountry.push(
+                `${countryConfig.label}: no numbers within minPrice=${pricePlan.userMinPrice}; lowest listed=${pricePlan.minCatalogPrice}`
               );
             } else {
               noNumbersByCountry.push(
@@ -1282,6 +1341,7 @@
 
       const successfulUses = normalizedActivation.successfulUses + 1;
       if (successfulUses >= normalizedActivation.maxUses) {
+        await completePhoneActivation(state, normalizedActivation);
         await clearReusableActivation();
         return;
       }
@@ -1641,7 +1701,6 @@
               continue;
             }
 
-            await completePhoneActivation(state, activation);
             await markActivationReusableAfterSuccess(state, activation);
             clearCountrySmsFailure(activation.countryId);
             shouldCancelActivation = false;

@@ -85,11 +85,17 @@ if (isTopFrame) {
     const matchOpenAiLogin = text.match(/(?:chatgpt\s+log-?in\s+code|enter\s+this\s+code)[^0-9]{0,24}(\d{6})/i);
     if (matchOpenAiLogin) return matchOpenAiLogin[1];
 
+    const matchVerification = text.match(/(?:verification\s+code|temporary\s+verification\s+code|security\s+code|one-?time\s+code|your\s+chatgpt\s+code)[^0-9]{0,48}(\d{6})/i);
+    if (matchVerification) return matchVerification[1];
+
     const matchEn = text.match(/code[:\s]+is[:\s]+(\d{6})|code[:\s]+(\d{6})/i);
     if (matchEn) return matchEn[1] || matchEn[2];
 
-    const match6 = text.match(/\b(\d{6})\b/);
-    if (match6) return match6[1];
+    const matchAction = text.match(/(?:use|enter|input|type|输入|使用|填写|填入)[^0-9]{0,24}(\d{6})(?:[^0-9]{0,32}(?:continue|继续|完成))?/i);
+    if (matchAction) return matchAction[1];
+
+    const matchContinue = text.match(/\b(\d{6})\b[^0-9]{0,32}(?:to\s+continue|continue|继续|完成)/i);
+    if (matchContinue) return matchContinue[1];
 
     return null;
   }

@@ -1585,6 +1585,46 @@ header {
   transform: scale(0.96);
 }
 
+.registered-account-pool-row {
+  align-items: flex-start;
+}
+
+.registered-account-pool-list {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.registered-account-pool-empty {
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 8px 0;
+}
+
+.registered-account-pool-item {
+  border: 1px solid var(--border);
+  background: var(--bg-base);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+}
+
+.registered-account-pool-email {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.registered-account-pool-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
 .hotmail-status-chip {
   padding: 2px 8px;
   border-radius: 999px;

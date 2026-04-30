@@ -92,6 +92,7 @@ const VERIFICATION_RESEND_COUNT_MIN = 0;
 const VERIFICATION_RESEND_COUNT_MAX = 20;
 const HERO_SMS_COUNTRY_ID = 52;
 const HERO_SMS_COUNTRY_LABEL = 'Thailand';
+const DEFAULT_HERO_SMS_MIN_PRICE = '0.05';
 const PERSISTED_SETTING_DEFAULTS = {
   autoStepDelaySeconds: null,
   mailProvider: '163',
@@ -133,6 +134,8 @@ return {
   assert.equal(api.normalizePersistentSettingValue('phoneCodePollMaxRounds', '18'), 18);
   assert.equal(api.normalizePersistentSettingValue('heroSmsMaxPrice', '0.123456'), '0.1235');
   assert.equal(api.normalizePersistentSettingValue('heroSmsMaxPrice', '0'), '');
+  assert.equal(api.normalizePersistentSettingValue('heroSmsMinPrice', '0.04999'), '0.05');
+  assert.equal(api.normalizePersistentSettingValue('heroSmsMinPrice', ''), '0.05');
   assert.deepStrictEqual(
     api.normalizePersistentSettingValue('heroSmsCountryFallback', [{ id: 16, label: 'United Kingdom' }, { id: 52 }]),
     [{ id: 16, label: 'United Kingdom' }, { id: 52, label: 'Country #52' }]

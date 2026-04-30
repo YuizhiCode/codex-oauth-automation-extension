@@ -371,6 +371,21 @@ return { extractVerificationCode };
   assert.equal(api.extractVerificationCode(bodyText), '982219');
 });
 
+test('extractVerificationCode ignores timestamp-only mail list text', () => {
+  const bundle = [
+    extractFunction('extractVerificationCode'),
+  ].join('\n');
+
+  const api = new Function(`
+${bundle}
+return { extractVerificationCode };
+`)();
+
+  assert.equal(api.extractVerificationCode('OpenAI verification message 2026-04-30 14:08:36'), null);
+  assert.equal(api.extractVerificationCode('OpenAI security notice 140836'), null);
+  assert.equal(api.extractVerificationCode('Enter this temporary verification code to continue: 214203'), '214203');
+});
+
 test('handlePollEmail ignores same-minute old snapshot mail before fallback', async () => {
   const bundle = [
     extractFunction('normalizeText'),

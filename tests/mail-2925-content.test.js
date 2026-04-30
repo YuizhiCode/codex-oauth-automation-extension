@@ -562,6 +562,24 @@ return { extractVerificationCode };
   assert.equal(api.extractVerificationCode(bodyText, false), '982219');
 });
 
+test('extractVerificationCode ignores timestamp-only 2925 mail list text', () => {
+  const bundle = [
+    extractFunction('extractVerificationCode'),
+  ].join('\n');
+
+  const api = new Function(`
+${bundle}
+return { extractVerificationCode };
+`)();
+
+  assert.equal(api.extractVerificationCode('OpenAI verification message 2026-04-30 14:08:36'), null);
+  assert.equal(api.extractVerificationCode('OpenAI security notice 140836'), null);
+  assert.equal(api.extractVerificationCode('OpenAI verification message (由 bounces+20216706-aa46-yuizhi999g8k7ps=2925.com@em7877.tm.openai.com 代发)'), null);
+  assert.equal(api.extractVerificationCode('Enter this temporary verification code to continue: 214203'), '214203');
+  assert.equal(api.extractVerificationCode('输入此临时验证码以继续：955777'), '955777');
+  assert.equal(api.extractVerificationCode('输入此临时验证码以继续：\n\n955777'), '955777');
+});
+
 test('openMailAndGetMessageText always returns to inbox after opening a 2925 message', async () => {
   const bundle = [
     extractFunction('returnToInbox'),

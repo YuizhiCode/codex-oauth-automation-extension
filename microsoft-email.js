@@ -203,6 +203,27 @@
       .join('\n');
   }
 
+  function extractVerificationCode(text) {
+    const source = String(text || '');
+    const matchCn = source.match(/(?:代码为|验证码[^0-9]*?)[\s：:]*(\d{6})/i);
+    if (matchCn) return matchCn[1];
+
+    const matchOpenAiLogin = source.match(/(?:chatgpt\s+log-?in\s+code|enter\s+this\s+code)[^0-9]{0,24}(\d{6})/i);
+    if (matchOpenAiLogin) return matchOpenAiLogin[1];
+
+    const matchChatGPT = source.match(/your\s+chatgpt\s+code\s+is\s+(\d{6})/i);
+    if (matchChatGPT) return matchChatGPT[1];
+
+    const matchEn = source.match(/(?:verification\s+code|temporary\s+verification\s+code|security\s+code|one-?time\s+code|your\s+chatgpt\s+code|code(?:\s+is|[\s:])+)[^0-9]{0,48}(\d{6})/i);
+    if (matchEn) return matchEn[1];
+
+    const matchAction = source.match(/(?:use|enter|input|type|输入|使用|填写|填入)[^0-9]{0,24}(\d{6})(?:[^0-9]{0,32}(?:continue|继续|完成))?/i);
+    if (matchAction) return matchAction[1];
+
+    const matchContinue = source.match(/\b(\d{6})\b[^0-9]{0,32}(?:to\s+continue|continue|继续|完成)/i);
+    return matchContinue ? matchContinue[1] : null;
+  }
+
   function isOpenAiMessage(message) {
     const sender = getMessageSender(message);
     if (OPENAI_SENDER_PATTERNS.some((pattern) => pattern.test(sender))) {
@@ -234,8 +255,7 @@
       const subject = normalizeFilterValue(message?.subject);
       const preview = normalizeFilterValue(message?.bodyPreview);
       const searchText = normalizeFilterValue(getMessageSearchText(message));
-      const codeMatch = getMessageSearchText(message).match(CODE_PATTERN);
-      const code = codeMatch?.[1] || '';
+      const code = extractVerificationCode(getMessageSearchText(message)) || '';
       if (!code || excludedCodes.has(code)) {
         continue;
       }
@@ -430,6 +450,7 @@
   const api = {
     CODE_PATTERN,
     exchangeRefreshToken,
+    extractVerificationCode,
     extractVerificationCodeFromMessages,
     fetchGraphMessages,
     fetchMicrosoftMailboxMessages,

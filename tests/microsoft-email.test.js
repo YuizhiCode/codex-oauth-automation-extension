@@ -64,6 +64,24 @@ test('extractVerificationCodeFromMessages 支持显式过滤条件并跳过排�
   });
 });
 
+test('extractVerificationCodeFromMessages ignores OpenAI mails that only contain timestamp digits', () => {
+  const result = extractVerificationCodeFromMessages([
+    {
+      From: { EmailAddress: { Address: 'noreply@openai.com' } },
+      Subject: 'OpenAI verification message',
+      BodyPreview: 'Received at 2026-04-30 14:08:36',
+      ReceivedDateTime: '2026-04-30T06:08:36.000Z',
+      Id: 'timestamp-only',
+    },
+  ], {
+    filterAfterTimestamp: Date.UTC(2026, 3, 30, 6, 0, 0),
+    senderFilters: ['openai'],
+    subjectFilters: ['verification'],
+  });
+
+  assert.equal(result, null);
+});
+
 test('normalizeMailboxId 将 Junk 归一为微软邮箱夹 ID', () => {
   assert.equal(normalizeMailboxId('INBOX'), 'inbox');
   assert.equal(normalizeMailboxId('junk'), 'junkemail');

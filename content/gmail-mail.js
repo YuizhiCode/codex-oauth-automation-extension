@@ -174,11 +174,14 @@ function extractVerificationCode(text) {
   const openAiLoginMatch = normalized.match(/(?:chatgpt\s+log-?in\s+code|enter\s+this\s+code)[^0-9]{0,24}(\d{6})/i);
   if (openAiLoginMatch) return openAiLoginMatch[1];
 
-  const enMatch = normalized.match(/(?:verification\s+code|temporary\s+verification\s+code|your\s+chatgpt\s+code|code(?:\s+is)?)[^0-9]{0,16}(\d{6})/i);
+  const enMatch = normalized.match(/(?:verification\s+code|temporary\s+verification\s+code|security\s+code|one-?time\s+code|your\s+chatgpt\s+code|code(?:\s+is)?)[^0-9]{0,48}(\d{6})/i);
   if (enMatch) return enMatch[1];
 
-  const plainMatch = normalized.match(/\b(\d{6})\b/);
-  if (plainMatch) return plainMatch[1];
+  const actionMatch = normalized.match(/(?:use|enter|input|type|输入|使用|填写|填入)[^0-9]{0,24}(\d{6})(?:[^0-9]{0,32}(?:continue|继续|完成))?/i);
+  if (actionMatch) return actionMatch[1];
+
+  const continueMatch = normalized.match(/\b(\d{6})\b[^0-9]{0,32}(?:to\s+continue|continue|继续|完成)/i);
+  if (continueMatch) return continueMatch[1];
 
   return null;
 }

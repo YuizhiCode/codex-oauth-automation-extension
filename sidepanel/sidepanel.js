@@ -72,6 +72,7 @@ const autoScheduleMeta = document.getElementById('auto-schedule-meta');
 const btnAutoRunNow = document.getElementById('btn-auto-run-now');
 const btnAutoCancelSchedule = document.getElementById('btn-auto-cancel-schedule');
 const btnClearLog = document.getElementById('btn-clear-log');
+const registeredAccountPoolList = document.getElementById('registered-account-pool-list');
 const configMenuShell = document.getElementById('config-menu-shell');
 const btnConfigMenu = document.getElementById('btn-config-menu');
 const configMenu = document.getElementById('config-menu');
@@ -311,6 +312,7 @@ const rowPhoneCodePollIntervalSeconds = document.getElementById('row-phone-code-
 const rowPhoneCodePollMaxRounds = document.getElementById('row-phone-code-poll-max-rounds');
 const inputHeroSmsApiKey = document.getElementById('input-hero-sms-api-key');
 const btnToggleHeroSmsApiKey = document.getElementById('btn-toggle-hero-sms-api-key');
+const inputHeroSmsMinPrice = document.getElementById('input-hero-sms-min-price');
 const inputHeroSmsMaxPrice = document.getElementById('input-hero-sms-max-price');
 const inputPhoneReplacementLimit = document.getElementById('input-phone-replacement-limit');
 const inputPhoneCodeWaitSeconds = document.getElementById('input-phone-code-wait-seconds');
@@ -394,6 +396,7 @@ const DEFAULT_HERO_SMS_REUSE_ENABLED = true;
 const HERO_SMS_ACQUIRE_PRIORITY_COUNTRY = 'country';
 const HERO_SMS_ACQUIRE_PRIORITY_PRICE = 'price';
 const DEFAULT_HERO_SMS_ACQUIRE_PRIORITY = HERO_SMS_ACQUIRE_PRIORITY_COUNTRY;
+const DEFAULT_HERO_SMS_MIN_PRICE = '0.05';
 const HERO_SMS_FALLBACK_COUNTRY_ITEMS = Object.freeze([
   { id: 52, chn: '泰国', eng: 'Thailand' },
   { id: 187, chn: '美国（物理)', eng: 'USA' },
@@ -2400,6 +2403,9 @@ function collectSettingsPayload() {
   const heroSmsMaxPriceValue = typeof inputHeroSmsMaxPrice !== 'undefined' && inputHeroSmsMaxPrice
     ? normalizeHeroSmsMaxPriceValue(inputHeroSmsMaxPrice.value)
     : '';
+  const heroSmsMinPriceValue = typeof inputHeroSmsMinPrice !== 'undefined' && inputHeroSmsMinPrice
+    ? normalizeHeroSmsMinPriceValue(inputHeroSmsMinPrice.value)
+    : DEFAULT_HERO_SMS_MIN_PRICE;
   const phoneVerificationReplacementLimitValue = typeof inputPhoneReplacementLimit !== 'undefined' && inputPhoneReplacementLimit
     ? normalizePhoneVerificationReplacementLimit(
       inputPhoneReplacementLimit.value,
@@ -2539,6 +2545,7 @@ function collectSettingsPayload() {
     heroSmsApiKey: heroSmsApiKeyValue,
     heroSmsReuseEnabled: heroSmsReuseEnabledValue,
     heroSmsAcquirePriority: heroSmsAcquirePriorityValue,
+    heroSmsMinPrice: heroSmsMinPriceValue,
     heroSmsMaxPrice: heroSmsMaxPriceValue,
     phoneVerificationReplacementLimit: phoneVerificationReplacementLimitValue,
     phoneCodeWaitSeconds: phoneCodeWaitSecondsValue,
@@ -2614,6 +2621,14 @@ function normalizeHeroSmsMaxPriceValue(value = '') {
     return '';
   }
   return String(Math.round(numeric * 10000) / 10000);
+}
+
+function normalizeHeroSmsMinPriceValue(value = '', fallback = DEFAULT_HERO_SMS_MIN_PRICE) {
+  const normalized = normalizeHeroSmsMaxPriceValue(value);
+  if (normalized) {
+    return normalized;
+  }
+  return normalizeHeroSmsMaxPriceValue(fallback) || DEFAULT_HERO_SMS_MIN_PRICE;
 }
 
 function normalizePhoneVerificationReplacementLimit(value, fallback = DEFAULT_PHONE_VERIFICATION_REPLACEMENT_LIMIT) {
@@ -3405,6 +3420,8 @@ async function previewHeroSmsPriceTiers() {
   const candidates = selectedCountries.length
     ? selectedCountries
     : [getSelectedHeroSmsCountryOption()];
+  const minPriceText = normalizeHeroSmsMinPriceValue(inputHeroSmsMinPrice?.value || DEFAULT_HERO_SMS_MIN_PRICE);
+  const minPrice = minPriceText ? Number(minPriceText) : null;
   const maxPriceText = normalizeHeroSmsMaxPriceValue(inputHeroSmsMaxPrice?.value || '');
   const maxPrice = maxPriceText ? Number(maxPriceText) : null;
   const apiKey = String(inputHeroSmsApiKey?.value || '').trim();
@@ -3472,10 +3489,19 @@ async function previewHeroSmsPriceTiers() {
       }
       const lowest = inStockPrices[0];
       const lowestText = formatHeroSmsPriceForPreview(lowest) || String(lowest);
+      const pricesAboveMin = Number.isFinite(minPrice) && minPrice > 0
+        ? inStockPrices.filter((price) => price >= minPrice)
+        : inStockPrices;
+      const lowestAllowed = pricesAboveMin[0] || null;
       if (Number.isFinite(maxPrice) && maxPrice > 0 && lowest > maxPrice) {
         previews.push(`${countryLabel}: 最低 ${lowestText}（高于上限 ${formatHeroSmsPriceForPreview(maxPrice) || maxPrice}）`);
+      } else if (!lowestAllowed) {
+        previews.push(`${countryLabel}: 最低 ${lowestText}（低于下限 ${formatHeroSmsPriceForPreview(minPrice) || minPrice}，无符合价格）`);
       } else {
-        previews.push(`${countryLabel}: 最低 ${lowestText}`);
+        const allowedText = formatHeroSmsPriceForPreview(lowestAllowed) || String(lowestAllowed);
+        previews.push(lowestAllowed === lowest
+          ? `${countryLabel}: 最低 ${lowestText}`
+          : `${countryLabel}: 最低 ${lowestText}，可用下限内最低 ${allowedText}`);
       }
     } catch (error) {
       previews.push(`${countryLabel}: 查询失败（${normalizeHeroSmsFetchErrorMessage(error)}）`);
@@ -4086,6 +4112,9 @@ function applySettingsState(state) {
   if (typeof selectHeroSmsAcquirePriority !== 'undefined' && selectHeroSmsAcquirePriority) {
     selectHeroSmsAcquirePriority.value = normalizeHeroSmsAcquirePriority(state?.heroSmsAcquirePriority);
   }
+  if (inputHeroSmsMinPrice) {
+    inputHeroSmsMinPrice.value = normalizeHeroSmsMinPriceValue(state?.heroSmsMinPrice);
+  }
   if (inputHeroSmsMaxPrice) {
     inputHeroSmsMaxPrice.value = normalizeHeroSmsMaxPriceValue(state?.heroSmsMaxPrice || '');
   }
@@ -4153,6 +4182,7 @@ function applySettingsState(state) {
   updateFallbackThreadIntervalInputState();
   updateAccountRunHistorySettingsUI();
   updatePhoneVerificationSettingsUI();
+  renderRegisteredAccountPool(state);
   if (typeof renderPayPalAccounts === 'function') {
     renderPayPalAccounts();
   }
@@ -4888,6 +4918,69 @@ function formatLuckmailDateTime(value) {
     hour12: false,
     timeZone: DISPLAY_TIMEZONE,
   });
+}
+
+function getRegisteredAccountMailProviderLabel(account = {}) {
+  const provider = String(account?.mailConfig?.mailProvider || '').trim().toLowerCase();
+  if (provider === ICLOUD_PROVIDER) {
+    const targetMailboxType = normalizeIcloudTargetMailboxType(account?.mailConfig?.icloudTargetMailboxType);
+    if (targetMailboxType === 'forward-mailbox') {
+      const forwardProvider = normalizeIcloudForwardMailProvider(account?.mailConfig?.icloudForwardMailProvider);
+      const forwardProviderLabel = ICLOUD_FORWARD_MAIL_PROVIDER_LABELS[forwardProvider]
+        || MAIL_PROVIDER_LOGIN_CONFIGS[forwardProvider]?.label
+        || forwardProvider
+        || '目标邮箱';
+      return `iCloud 转发（${forwardProviderLabel}）`;
+    }
+    return 'iCloud 邮箱';
+  }
+  if (provider === 'hotmail-api') {
+    return 'Hotmail（账号池）';
+  }
+  if (provider === 'luckmail-api') {
+    return 'LuckMail（API 购邮）';
+  }
+  if (provider === 'cloudflare-temp-email') {
+    return 'Cloudflare Temp Email';
+  }
+  return MAIL_PROVIDER_LOGIN_CONFIGS[provider]?.label || provider || '未记录邮箱类型';
+}
+
+function formatRegisteredAccountPoolTime(value) {
+  const timestamp = Number(value) || 0;
+  if (!timestamp) {
+    return '';
+  }
+  return new Date(timestamp).toLocaleString('zh-CN', {
+    hour12: false,
+    timeZone: DISPLAY_TIMEZONE,
+  });
+}
+
+function renderRegisteredAccountPool(state = latestState) {
+  if (!registeredAccountPoolList) {
+    return;
+  }
+  const accounts = Array.isArray(state?.accounts) ? state.accounts : [];
+  if (!accounts.length) {
+    registeredAccountPoolList.innerHTML = '<div class="registered-account-pool-empty">暂无待复用账号</div>';
+    return;
+  }
+  registeredAccountPoolList.innerHTML = accounts.map((account) => {
+    const email = String(account?.email || '').trim() || '(无邮箱)';
+    const providerLabel = getRegisteredAccountMailProviderLabel(account);
+    const updatedAt = formatRegisteredAccountPoolTime(account?.updatedAt || account?.createdAt);
+    const timeText = updatedAt ? `<span>${escapeHtml(updatedAt)}</span>` : '';
+    return `
+      <div class="registered-account-pool-item">
+        <div class="registered-account-pool-email">${escapeHtml(email)}</div>
+        <div class="registered-account-pool-meta">
+          <span>${escapeHtml(providerLabel)}</span>
+          ${timeText}
+        </div>
+      </div>
+    `;
+  }).join('');
 }
 
 function getMailProviderLoginConfig(provider = selectMailProvider.value) {
@@ -6501,6 +6594,8 @@ async function startAutoRunFromCurrentSettings() {
     console.warn('Failed to refresh contribution content hint before auto run:', error);
   }
 
+  const requestedRunCount = getRunCountValue();
+
   if (typeof persistCurrentSettingsForAction === 'function') {
     await persistCurrentSettingsForAction();
   }
@@ -6513,7 +6608,7 @@ async function startAutoRunFromCurrentSettings() {
   if (customEmailPoolEnabled && lockedRunCount <= 0) {
     throw new Error('请先在邮箱池里至少填写 1 个邮箱。');
   }
-  const totalRuns = lockedRunCount > 0 ? lockedRunCount : getRunCountValue();
+  const totalRuns = lockedRunCount > 0 ? lockedRunCount : requestedRunCount;
   if (lockedRunCount > 0) {
     inputRunCount.value = String(lockedRunCount);
   }
@@ -7693,6 +7788,14 @@ inputHeroSmsMaxPrice?.addEventListener('blur', () => {
   inputHeroSmsMaxPrice.value = normalizeHeroSmsMaxPriceValue(inputHeroSmsMaxPrice.value);
   saveSettings({ silent: true }).catch(() => { });
 });
+inputHeroSmsMinPrice?.addEventListener('input', () => {
+  markSettingsDirty(true);
+  scheduleSettingsAutoSave();
+});
+inputHeroSmsMinPrice?.addEventListener('blur', () => {
+  inputHeroSmsMinPrice.value = normalizeHeroSmsMinPriceValue(inputHeroSmsMinPrice.value);
+  saveSettings({ silent: true }).catch(() => { });
+});
 
 btnHeroSmsPricePreview?.addEventListener('click', async () => {
   try {
@@ -7925,6 +8028,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       renderPayPalAccounts();
       renderHotmailAccounts();
       renderMail2925Accounts();
+      renderRegisteredAccountPool();
       if (isLuckmailProvider()) {
         queueLuckmailPurchaseRefresh();
       }
@@ -8125,6 +8229,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           inputEmail.value = getCurrentHotmailEmail();
         }
       }
+      if (message.payload.accounts !== undefined) {
+        renderRegisteredAccountPool(latestState);
+      }
       if (message.payload.currentPayPalAccountId !== undefined || message.payload.paypalAccounts !== undefined) {
         renderPayPalAccounts();
       }
@@ -8224,6 +8331,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       }
       if (message.payload.heroSmsAcquirePriority !== undefined && selectHeroSmsAcquirePriority) {
         selectHeroSmsAcquirePriority.value = normalizeHeroSmsAcquirePriority(message.payload.heroSmsAcquirePriority);
+      }
+      if (message.payload.heroSmsMinPrice !== undefined && inputHeroSmsMinPrice) {
+        inputHeroSmsMinPrice.value = normalizeHeroSmsMinPriceValue(message.payload.heroSmsMinPrice);
       }
       if (message.payload.heroSmsMaxPrice !== undefined && inputHeroSmsMaxPrice) {
         inputHeroSmsMaxPrice.value = normalizeHeroSmsMaxPriceValue(message.payload.heroSmsMaxPrice);

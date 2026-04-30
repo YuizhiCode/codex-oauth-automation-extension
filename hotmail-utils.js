@@ -41,11 +41,17 @@
     const matchOpenAiLogin = source.match(/(?:chatgpt\s+log-?in\s+code|enter\s+this\s+code)[^0-9]{0,24}(\d{6})/i);
     if (matchOpenAiLogin) return matchOpenAiLogin[1];
 
+    const matchVerification = source.match(/(?:verification\s+code|temporary\s+verification\s+code|security\s+code|one-?time\s+code|your\s+chatgpt\s+code)[^0-9]{0,48}(\d{6})/i);
+    if (matchVerification) return matchVerification[1];
+
     const matchEn = source.match(/code(?:\s+is|[\s:])+(\d{6})/i);
     if (matchEn) return matchEn[1];
 
-    const matchStandalone = source.match(/\b(\d{6})\b/);
-    return matchStandalone ? matchStandalone[1] : null;
+    const matchAction = source.match(/(?:use|enter|input|type|输入|使用|填写|填入)[^0-9]{0,24}(\d{6})(?:[^0-9]{0,32}(?:continue|继续|完成))?/i);
+    if (matchAction) return matchAction[1];
+
+    const matchContinue = source.match(/\b(\d{6})\b[^0-9]{0,32}(?:to\s+continue|continue|继续|完成)/i);
+    return matchContinue ? matchContinue[1] : null;
   }
 
   function extractVerificationCodeFromMessage(message = {}) {

@@ -342,6 +342,10 @@
           <button id="btn-fetch-email" class="btn btn-outline btn-sm data-inline-btn" type="button">获取</button>
         </div>
       </div>
+      <div class="data-row registered-account-pool-row" id="row-registered-account-pool">
+        <span class="data-label">复用账号池</span>
+        <div id="registered-account-pool-list" class="registered-account-pool-list"></div>
+      </div>
       <div class="data-row module-divider-start" id="row-auto-delay-settings">
         <span class="data-label">延迟</span>
         <div class="data-inline setting-pair">
@@ -481,6 +485,12 @@
                   <span id="display-hero-sms-price-tiers" class="data-value mono hero-sms-price-preview-text">未获取</span>
                 </div>
                 <div class="hero-sms-price-controls-grid">
+                  <div class="hero-sms-price-control">
+                    <span class="hero-sms-settings-caption">价格下限</span>
+                    <div class="setting-controls">
+                      <input type="number" id="input-hero-sms-min-price" class="data-input auto-delay-input mono hero-sms-max-price-input" value="0.05" placeholder="0.05" min="0" step="0.0001" title="接码价格下限；低于该价格的档位不会尝试" />
+                    </div>
+                  </div>
                   <div class="hero-sms-price-control">
                     <span class="hero-sms-settings-caption">价格上限</span>
                     <div class="setting-controls">

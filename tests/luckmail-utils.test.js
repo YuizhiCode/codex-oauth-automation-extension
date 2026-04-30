@@ -84,6 +84,21 @@ test('normalizeLuckmailTokenCode and normalizeLuckmailTokenMail extract verifica
   assert.equal(suspiciousLoginMail.verification_code, '982219');
 });
 
+test('extractLuckmailVerificationCode ignores mail timestamps and unrelated standalone numbers', () => {
+  assert.equal(
+    extractLuckmailVerificationCode('OpenAI verification message received at 2026-04-30 14:08:36'),
+    null
+  );
+  assert.equal(
+    extractLuckmailVerificationCode('OpenAI security notice 140836'),
+    null
+  );
+  assert.equal(
+    extractLuckmailVerificationCode('Enter this temporary verification code to continue: 214203'),
+    '214203'
+  );
+});
+
 test('normalizeLuckmailProjectName and isLuckmailPurchaseForProject match openai case-insensitively', () => {
   assert.equal(normalizeLuckmailProjectName(' OpenAi '), 'openai');
   assert.equal(isLuckmailPurchaseForProject({

@@ -29,6 +29,7 @@
       launchAutoRunTimerPlan,
       normalizeAutoRunFallbackThreadIntervalMinutes,
       persistAutoRunTimerPlan,
+      prepareRegisteredAccountResumeForAutoRun,
       resetState,
       runAutoSequenceFromStep,
       runtime,
@@ -403,6 +404,20 @@
             await setState(keepSettings);
             deps.chrome.runtime.sendMessage({ type: 'AUTO_RUN_RESET' }).catch(() => { });
             await sleepWithStop(500);
+
+            if (startStep === 1 && typeof prepareRegisteredAccountResumeForAutoRun === 'function') {
+              const registeredResume = await prepareRegisteredAccountResumeForAutoRun({
+                targetRun,
+                totalRuns,
+                attemptRun,
+                sessionId,
+              });
+              const resumeStartStep = Number(registeredResume?.startStep) || 0;
+              if (resumeStartStep > 1) {
+                startStep = resumeStartStep;
+                useExistingProgress = true;
+              }
+            }
           } else {
             await setState({
               autoRunSessionId: sessionId,

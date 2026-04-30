@@ -35,6 +35,8 @@
       finalizePhoneActivationAfterSuccessfulFlow,
       finalizeStep3Completion,
       finalizeIcloudAliasAfterSuccessfulFlow,
+      removeCurrentRegisteredAccountAfterPlatformSuccess,
+      saveRegisteredAccountAfterProfileSuccess,
       findHotmailAccount,
       findPayPalAccount,
       flushCommand,
@@ -213,6 +215,9 @@
       if (typeof finalizePhoneActivationAfterSuccessfulFlow === 'function') {
         await finalizePhoneActivationAfterSuccessfulFlow(latestState);
       }
+      if (typeof removeCurrentRegisteredAccountAfterPlatformSuccess === 'function') {
+        await removeCurrentRegisteredAccountAfterPlatformSuccess(latestState);
+      }
     }
 
     async function handleStepData(step, payload) {
@@ -279,6 +284,11 @@
 
       if (stepKey === 'platform-verify') {
         await handlePlatformVerifyStepData(payload);
+        return;
+      }
+
+      if (stepKey === 'fill-profile') {
+        await saveRegisteredAccountAfterProfileSuccess?.(stateForStep);
         return;
       }
 

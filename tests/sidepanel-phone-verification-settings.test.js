@@ -68,6 +68,8 @@ test('sidepanel html exposes phone verification toggle and dedicated HeroSMS row
   assert.doesNotMatch(html, /id="select-hero-sms-country-fallback"/);
   assert.match(html, /id="row-hero-sms-api-key"/);
   assert.match(html, /id="row-hero-sms-max-price"/);
+  assert.match(html, /id="input-hero-sms-min-price"/);
+  assert.match(html, /id="input-hero-sms-max-price"/);
   assert.match(html, /id="row-hero-sms-current-number"/);
   assert.match(html, /id="row-hero-sms-price-tiers"/);
   assert.match(html, /id="row-hero-sms-current-code"/);
@@ -227,6 +229,7 @@ const inputVerificationResendCount = { value: '4' };
 const inputHeroSmsApiKey = { value: 'demo-key' };
 const inputHeroSmsReuseEnabled = { checked: true };
 const selectHeroSmsAcquirePriority = { value: 'price' };
+const inputHeroSmsMinPrice = { value: '0.05' };
 const inputHeroSmsMaxPrice = { value: '0.12' };
 const inputPhoneReplacementLimit = { value: '5' };
 const inputPhoneCodeWaitSeconds = { value: '75' };
@@ -252,6 +255,7 @@ const DEFAULT_HERO_SMS_REUSE_ENABLED = true;
 const HERO_SMS_ACQUIRE_PRIORITY_COUNTRY = 'country';
 const HERO_SMS_ACQUIRE_PRIORITY_PRICE = 'price';
 const DEFAULT_HERO_SMS_ACQUIRE_PRIORITY = HERO_SMS_ACQUIRE_PRIORITY_COUNTRY;
+const DEFAULT_HERO_SMS_MIN_PRICE = '0.05';
 const PHONE_REPLACEMENT_LIMIT_MIN = 1;
 const PHONE_REPLACEMENT_LIMIT_MAX = 20;
 const DEFAULT_HERO_SMS_COUNTRY_ID = 52;
@@ -279,6 +283,7 @@ function normalizeAutoDelayMinutes(value) { return Number(value) || 30; }
 function normalizeAutoStepDelaySeconds(value) { return value === '' ? null : Number(value); }
 function normalizeVerificationResendCount(value, fallback) { return Number(value) || fallback; }
 ${extractFunction('normalizeHeroSmsMaxPriceValue')}
+${extractFunction('normalizeHeroSmsMinPriceValue')}
 ${extractFunction('normalizePhoneVerificationReplacementLimit')}
 ${extractFunction('normalizePhoneCodeWaitSecondsValue')}
 ${extractFunction('normalizePhoneCodeTimeoutWindowsValue')}
@@ -304,6 +309,7 @@ return { collectSettingsPayload };
   assert.equal(payload.heroSmsApiKey, 'demo-key');
   assert.equal(payload.heroSmsReuseEnabled, true);
   assert.equal(payload.heroSmsAcquirePriority, 'price');
+  assert.equal(payload.heroSmsMinPrice, '0.05');
   assert.equal(payload.heroSmsMaxPrice, '0.12');
   assert.equal(payload.phoneVerificationReplacementLimit, 5);
   assert.equal(payload.phoneCodeWaitSeconds, 75);

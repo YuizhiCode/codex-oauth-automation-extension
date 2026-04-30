@@ -41,7 +41,7 @@ test('phone verification helper requests HeroSMS numbers with fixed OpenAI and T
       const parsedUrl = new URL(url);
       requests.push(parsedUrl);
       const action = parsedUrl.searchParams.get('action');
-      if (action === 'getPrices') {
+      if (action === 'serviceCountRent') {
         return {
           ok: true,
           text: async () => buildHeroSmsPricesPayload(),
@@ -71,7 +71,7 @@ test('phone verification helper requests HeroSMS numbers with fixed OpenAI and T
     maxUses: 3,
   });
   assert.equal(requests.length, 2);
-  assert.equal(requests[0].searchParams.get('action'), 'getPrices');
+  assert.equal(requests[0].searchParams.get('action'), 'serviceCountRent');
   assert.equal(requests[0].searchParams.get('service'), 'dr');
   assert.equal(requests[0].searchParams.get('country'), '52');
   assert.equal(requests[0].searchParams.get('api_key'), 'demo-key');
@@ -83,9 +83,9 @@ test('phone verification helper requests HeroSMS numbers with fixed OpenAI and T
   assert.equal(requests[1].searchParams.get('api_key'), 'demo-key');
 });
 
-test('phone verification helper retries HeroSMS getPrices until it receives a usable lowest price', async () => {
+test('phone verification helper retries HeroSMS serviceCountRent until it receives a usable lowest price', async () => {
   const requests = [];
-  let getPricesAttempt = 0;
+  let serviceCountRentAttempt = 0;
   const helpers = api.createPhoneVerificationHelpers({
     addLog: async () => {},
     ensureStep8SignupPageReady: async () => {},
@@ -93,9 +93,9 @@ test('phone verification helper retries HeroSMS getPrices until it receives a us
       const parsedUrl = new URL(url);
       requests.push(parsedUrl);
       const action = parsedUrl.searchParams.get('action');
-      if (action === 'getPrices') {
-        getPricesAttempt += 1;
-        return getPricesAttempt < 3
+      if (action === 'serviceCountRent') {
+        serviceCountRentAttempt += 1;
+        return serviceCountRentAttempt < 3
           ? {
             ok: true,
             text: async () => JSON.stringify({ unavailable: true }),
@@ -123,17 +123,17 @@ test('phone verification helper retries HeroSMS getPrices until it receives a us
   await helpers.requestPhoneActivation({ heroSmsApiKey: 'demo-key' });
 
   assert.equal(requests.length, 4);
-  assert.equal(requests[0].searchParams.get('action'), 'getPrices');
-  assert.equal(requests[1].searchParams.get('action'), 'getPrices');
-  assert.equal(requests[2].searchParams.get('action'), 'getPrices');
+  assert.equal(requests[0].searchParams.get('action'), 'serviceCountRent');
+  assert.equal(requests[1].searchParams.get('action'), 'serviceCountRent');
+  assert.equal(requests[2].searchParams.get('action'), 'serviceCountRent');
   assert.equal(requests[3].searchParams.get('action'), 'getNumber');
   assert.equal(requests[3].searchParams.get('maxPrice'), '0.09');
   assert.equal(requests[3].searchParams.get('fixedPrice'), 'true');
 });
 
-test('phone verification helper falls back to plain getNumber only after HeroSMS getPrices fails three times', async () => {
+test('phone verification helper falls back to plain getNumber only after HeroSMS serviceCountRent fails three times', async () => {
   const requests = [];
-  let getPricesAttempt = 0;
+  let serviceCountRentAttempt = 0;
   const helpers = api.createPhoneVerificationHelpers({
     addLog: async () => {},
     ensureStep8SignupPageReady: async () => {},
@@ -141,11 +141,11 @@ test('phone verification helper falls back to plain getNumber only after HeroSMS
       const parsedUrl = new URL(url);
       requests.push(parsedUrl);
       const action = parsedUrl.searchParams.get('action');
-      if (action === 'getPrices') {
-        getPricesAttempt += 1;
+      if (action === 'serviceCountRent') {
+        serviceCountRentAttempt += 1;
         return {
           ok: true,
-          text: async () => JSON.stringify({ unavailable: getPricesAttempt }),
+          text: async () => JSON.stringify({ unavailable: serviceCountRentAttempt }),
         };
       }
       if (action === 'getNumber') {
@@ -166,9 +166,9 @@ test('phone verification helper falls back to plain getNumber only after HeroSMS
   await helpers.requestPhoneActivation({ heroSmsApiKey: 'demo-key' });
 
   assert.equal(requests.length, 4);
-  assert.equal(requests[0].searchParams.get('action'), 'getPrices');
-  assert.equal(requests[1].searchParams.get('action'), 'getPrices');
-  assert.equal(requests[2].searchParams.get('action'), 'getPrices');
+  assert.equal(requests[0].searchParams.get('action'), 'serviceCountRent');
+  assert.equal(requests[1].searchParams.get('action'), 'serviceCountRent');
+  assert.equal(requests[2].searchParams.get('action'), 'serviceCountRent');
   assert.equal(requests[2].searchParams.get('service'), 'dr');
   assert.equal(requests[2].searchParams.get('country'), '52');
   assert.equal(requests[2].searchParams.get('api_key'), 'demo-key');
@@ -177,7 +177,7 @@ test('phone verification helper falls back to plain getNumber only after HeroSMS
   assert.equal(requests[3].searchParams.get('fixedPrice'), null);
 });
 
-test('phone verification helper retries with HeroSMS getNumberV2 when getNumber reports NO_NUMBERS', async () => {
+test('phone verification helper does not request a second HeroSMS number in the same round after getNumber reports NO_NUMBERS', async () => {
   const requests = [];
   const helpers = api.createPhoneVerificationHelpers({
     addLog: async () => {},
@@ -186,7 +186,7 @@ test('phone verification helper retries with HeroSMS getNumberV2 when getNumber 
       const parsedUrl = new URL(url);
       requests.push(parsedUrl);
       const action = parsedUrl.searchParams.get('action');
-      if (action === 'getPrices') {
+      if (action === 'serviceCountRent') {
         return {
           ok: true,
           text: async () => buildHeroSmsPricesPayload({ country: '16' }),
@@ -198,15 +198,6 @@ test('phone verification helper retries with HeroSMS getNumberV2 when getNumber 
           text: async () => 'NO_NUMBERS',
         };
       }
-      if (action === 'getNumberV2') {
-        return {
-          ok: true,
-          text: async () => JSON.stringify({
-            activationId: '654321',
-            phoneNumber: '447911123456',
-          }),
-        };
-      }
       throw new Error(`Unexpected HeroSMS action: ${action}`);
     },
     getState: async () => ({ heroSmsApiKey: 'demo-key', heroSmsCountryId: 16 }),
@@ -216,32 +207,28 @@ test('phone verification helper retries with HeroSMS getNumberV2 when getNumber 
     throwIfStopped: () => {},
   });
 
-  const activation = await helpers.requestPhoneActivation({
-    heroSmsApiKey: 'demo-key',
-    heroSmsCountryId: 16,
-  });
+  await assert.rejects(
+    () => helpers.requestPhoneActivation({
+      heroSmsApiKey: 'demo-key',
+      heroSmsCountryId: 16,
+      heroSmsActivationRetryRounds: 1,
+    }),
+    /HeroSMS no numbers available/i
+  );
 
-  assert.deepStrictEqual(activation, {
-    activationId: '654321',
-    phoneNumber: '447911123456',
-    provider: 'hero-sms',
-    serviceCode: 'dr',
-    countryId: 16,
-    successfulUses: 0,
-    maxUses: 3,
-    statusAction: 'getStatusV2',
-  });
-  assert.equal(requests.length, 3);
-  assert.equal(requests[0].searchParams.get('action'), 'getPrices');
+  assert.equal(requests.length, 4);
+  assert.equal(requests[0].searchParams.get('action'), 'serviceCountRent');
   assert.equal(requests[0].searchParams.get('country'), '16');
   assert.equal(requests[1].searchParams.get('action'), 'getNumber');
   assert.equal(requests[1].searchParams.get('country'), '16');
   assert.equal(requests[1].searchParams.get('maxPrice'), '0.08');
   assert.equal(requests[1].searchParams.get('fixedPrice'), 'true');
-  assert.equal(requests[2].searchParams.get('action'), 'getNumberV2');
+  assert.equal(requests[2].searchParams.get('action'), 'serviceCountRent');
   assert.equal(requests[2].searchParams.get('country'), '16');
-  assert.equal(requests[2].searchParams.get('maxPrice'), '0.08');
-  assert.equal(requests[2].searchParams.get('fixedPrice'), 'true');
+  assert.equal(requests[3].searchParams.get('action'), 'getNumber');
+  assert.equal(requests[3].searchParams.get('country'), '16');
+  assert.equal(requests[3].searchParams.get('maxPrice'), '0.08');
+  assert.equal(requests[3].searchParams.get('fixedPrice'), 'true');
 });
 
 test('phone verification helper applies ordered fallback countries when primary country has no numbers', async () => {
@@ -255,7 +242,7 @@ test('phone verification helper applies ordered fallback countries when primary 
       const action = parsedUrl.searchParams.get('action');
       const country = parsedUrl.searchParams.get('country');
 
-      if (action === 'getPrices') {
+      if (action === 'serviceCountRent') {
         return {
           ok: true,
           text: async () => JSON.stringify({
@@ -269,11 +256,11 @@ test('phone verification helper applies ordered fallback countries when primary 
         };
       }
 
-      if (action === 'getNumber' || action === 'getNumberV2') {
+      if (action === 'getNumber') {
         if (country === '52') {
           return { ok: true, text: async () => 'NO_NUMBERS' };
         }
-        if (country === '16' && action === 'getNumber') {
+        if (country === '16') {
           return { ok: true, text: async () => 'ACCESS_NUMBER:861234:447955001122' };
         }
       }
@@ -298,10 +285,9 @@ test('phone verification helper applies ordered fallback countries when primary 
   assert.equal(activation.phoneNumber, '447955001122');
   const actionTrace = requests.map((requestUrl) => `${requestUrl.searchParams.get('action')}:${requestUrl.searchParams.get('country')}`);
   assert.deepStrictEqual(actionTrace, [
-    'getPrices:52',
+    'serviceCountRent:52',
     'getNumber:52',
-    'getNumberV2:52',
-    'getPrices:16',
+    'serviceCountRent:16',
     'getNumber:16',
   ]);
 });
@@ -317,7 +303,7 @@ test('phone verification helper honors price-priority acquisition mode across se
       const action = parsedUrl.searchParams.get('action');
       const country = parsedUrl.searchParams.get('country');
 
-      if (action === 'getPrices') {
+      if (action === 'serviceCountRent') {
         const cost = country === '52' ? 0.08 : 0.05;
         return {
           ok: true,
@@ -359,8 +345,8 @@ test('phone verification helper honors price-priority acquisition mode across se
   assert.equal(activation.countryId, 16);
   const actionTrace = requests.map((requestUrl) => `${requestUrl.searchParams.get('action')}:${requestUrl.searchParams.get('country')}`);
   assert.deepStrictEqual(actionTrace, [
-    'getPrices:52',
-    'getPrices:16',
+    'serviceCountRent:52',
+    'serviceCountRent:16',
     'getNumber:16',
   ]);
 });
@@ -382,7 +368,7 @@ test('phone verification helper retries acquisition rounds when at least one cou
       const action = parsedUrl.searchParams.get('action');
       const country = parsedUrl.searchParams.get('country');
 
-      if (action === 'getPrices') {
+      if (action === 'serviceCountRent') {
         if (country === '52') {
           return {
             ok: true,
@@ -449,7 +435,7 @@ test('phone verification helper retries acquisition rounds when at least one cou
   );
 });
 
-test('phone verification helper uses HeroSMS getStatusV2 after acquiring a number via getNumberV2', async () => {
+test('phone verification helper uses HeroSMS getStatus after acquiring a number', async () => {
   const requests = [];
   const stateUpdates = [];
   let currentState = {
@@ -469,7 +455,7 @@ test('phone verification helper uses HeroSMS getStatusV2 after acquiring a numbe
       const parsedUrl = new URL(url);
       requests.push(parsedUrl);
       const action = parsedUrl.searchParams.get('action');
-      if (action === 'getPrices') {
+      if (action === 'serviceCountRent') {
         return {
           ok: true,
           text: async () => buildHeroSmsPricesPayload({ country: '16' }),
@@ -478,26 +464,15 @@ test('phone verification helper uses HeroSMS getStatusV2 after acquiring a numbe
       if (action === 'getNumber') {
         return {
           ok: true,
-          text: async () => 'NO_NUMBERS',
+          text: async () => 'ACCESS_NUMBER:654321:447911123456',
         };
       }
-      if (action === 'getNumberV2') {
-        return {
-          ok: true,
-          text: async () => JSON.stringify({
-            activationId: '654321',
-            phoneNumber: '447911123456',
-          }),
-        };
-      }
-      if (action === 'getStatusV2') {
+      if (action === 'getStatus') {
         statusPollCount += 1;
         return {
           ok: true,
           text: async () => (
-            statusPollCount === 1
-              ? buildHeroSmsStatusV2Payload()
-              : buildHeroSmsStatusV2Payload({ smsCode: '112233', smsText: 'Your code is 112233' })
+            statusPollCount === 1 ? 'STATUS_WAIT_CODE' : 'STATUS_OK:112233'
           ),
         };
       }
@@ -559,7 +534,6 @@ test('phone verification helper uses HeroSMS getStatusV2 after acquiring a numbe
         countryId: 16,
         successfulUses: 0,
         maxUses: 3,
-        statusAction: 'getStatusV2',
       },
       currentPhoneVerificationCode: '',
     },
@@ -575,7 +549,6 @@ test('phone verification helper uses HeroSMS getStatusV2 after acquiring a numbe
         countryId: 16,
         successfulUses: 1,
         maxUses: 3,
-        statusAction: 'getStatusV2',
       },
     },
     {
@@ -585,12 +558,10 @@ test('phone verification helper uses HeroSMS getStatusV2 after acquiring a numbe
   ]);
   const actions = requests.map((url) => url.searchParams.get('action'));
   assert.deepStrictEqual(actions, [
-    'getPrices',
+    'serviceCountRent',
     'getNumber',
-    'getNumberV2',
-    'getStatusV2',
-    'getStatusV2',
-    'setStatus',
+    'getStatus',
+    'getStatus',
   ]);
 });
 
@@ -604,7 +575,7 @@ test('phone verification helper refreshes maxPrice when HeroSMS returns WRONG_MA
       const parsedUrl = new URL(url);
       requests.push(parsedUrl);
       const action = parsedUrl.searchParams.get('action');
-      if (action === 'getPrices') {
+      if (action === 'serviceCountRent') {
         return {
           ok: true,
           text: async () => buildHeroSmsPricesPayload(),
@@ -643,7 +614,7 @@ test('phone verification helper refreshes maxPrice when HeroSMS returns WRONG_MA
     maxUses: 3,
   });
   assert.equal(requests.length, 3);
-  assert.equal(requests[0].searchParams.get('action'), 'getPrices');
+  assert.equal(requests[0].searchParams.get('action'), 'serviceCountRent');
   assert.equal(requests[1].searchParams.get('action'), 'getNumber');
   assert.equal(requests[1].searchParams.get('maxPrice'), '0.08');
   assert.equal(requests[2].searchParams.get('action'), 'getNumber');
@@ -661,7 +632,7 @@ test('phone verification helper climbs price tiers when NO_NUMBERS is returned a
       requests.push(parsedUrl);
       const action = parsedUrl.searchParams.get('action');
       const maxPrice = parsedUrl.searchParams.get('maxPrice');
-      if (action === 'getPrices') {
+      if (action === 'serviceCountRent') {
         return {
           ok: true,
           text: async () => JSON.stringify({
@@ -675,12 +646,6 @@ test('phone verification helper climbs price tiers when NO_NUMBERS is returned a
         };
       }
       if (action === 'getNumber' && maxPrice === '0.08') {
-        return {
-          ok: true,
-          text: async () => 'NO_NUMBERS',
-        };
-      }
-      if (action === 'getNumberV2' && maxPrice === '0.08') {
         return {
           ok: true,
           text: async () => 'NO_NUMBERS',
@@ -705,11 +670,224 @@ test('phone verification helper climbs price tiers when NO_NUMBERS is returned a
   assert.equal(activation.activationId, '989898');
   const actions = requests.map((requestUrl) => `${requestUrl.searchParams.get('action')}:${requestUrl.searchParams.get('maxPrice') || ''}`);
   assert.deepStrictEqual(actions, [
-    'getPrices:',
+    'serviceCountRent:',
     'getNumber:0.08',
-    'getNumberV2:0.08',
     'getNumber:0.12',
   ]);
+});
+
+test('phone verification helper skips price tiers below configured HeroSMS min price', async () => {
+  const requests = [];
+  const helpers = api.createPhoneVerificationHelpers({
+    addLog: async () => {},
+    ensureStep8SignupPageReady: async () => {},
+    fetchImpl: async (url) => {
+      const parsedUrl = new URL(url);
+      requests.push(parsedUrl);
+      const action = parsedUrl.searchParams.get('action');
+      const maxPrice = parsedUrl.searchParams.get('maxPrice');
+      if (action === 'serviceCountRent') {
+        return {
+          ok: true,
+          text: async () => JSON.stringify({
+            52: {
+              dr: {
+                low: { cost: 0.04, count: 100 },
+                allowed: { cost: 0.06, count: 100 },
+              },
+            },
+          }),
+        };
+      }
+      if (action === 'getNumber' && maxPrice === '0.06') {
+        return {
+          ok: true,
+          text: async () => 'ACCESS_NUMBER:565656:66950000001',
+        };
+      }
+      throw new Error(`Unexpected HeroSMS action: ${action} @ ${maxPrice || 'no-price'}`);
+    },
+    getState: async () => ({ heroSmsApiKey: 'demo-key' }),
+    sendToContentScriptResilient: async () => ({}),
+    setState: async () => {},
+    sleepWithStop: async () => {},
+    throwIfStopped: () => {},
+  });
+
+  const activation = await helpers.requestPhoneActivation({
+    heroSmsApiKey: 'demo-key',
+    heroSmsMinPrice: '0.05',
+  });
+  assert.equal(activation.activationId, '565656');
+  const actions = requests.map((requestUrl) => `${requestUrl.searchParams.get('action')}:${requestUrl.searchParams.get('maxPrice') || ''}`);
+  assert.deepStrictEqual(actions, [
+    'serviceCountRent:',
+    'getNumber:0.06',
+  ]);
+});
+
+test('phone verification helper selects the nearest returned price tier at or above configured HeroSMS min price', async () => {
+  const requests = [];
+  const helpers = api.createPhoneVerificationHelpers({
+    addLog: async () => {},
+    ensureStep8SignupPageReady: async () => {},
+    fetchImpl: async (url) => {
+      const parsedUrl = new URL(url);
+      requests.push(parsedUrl);
+      const action = parsedUrl.searchParams.get('action');
+      const maxPrice = parsedUrl.searchParams.get('maxPrice');
+      if (action === 'serviceCountRent') {
+        return {
+          ok: true,
+          text: async () => JSON.stringify({
+            6: {
+              2: {
+                count: 157,
+                price: 0.0518,
+              },
+              4: {
+                count: 157,
+                price: 0.054,
+              },
+              12: {
+                count: 157,
+                price: 0.0675,
+              },
+              24: {
+                count: 157,
+                price: 0.0855,
+              },
+            },
+          }),
+        };
+      }
+      if (action === 'getNumber' && maxPrice === '0.0518') {
+        return {
+          ok: true,
+          text: async () => 'ACCESS_NUMBER:505050:628500000001',
+        };
+      }
+      throw new Error(`Unexpected HeroSMS action: ${action} @ ${maxPrice || 'no-price'}`);
+    },
+    getState: async () => ({ heroSmsApiKey: 'demo-key' }),
+    sendToContentScriptResilient: async () => ({}),
+    setState: async () => {},
+    sleepWithStop: async () => {},
+    throwIfStopped: () => {},
+  });
+
+  const activation = await helpers.requestPhoneActivation({
+    heroSmsApiKey: 'demo-key',
+    heroSmsCountryId: 6,
+    heroSmsCountryLabel: '印度尼西亚 (Indonesia)',
+    heroSmsMinPrice: '0.05',
+  });
+  assert.equal(activation.activationId, '505050');
+  const actions = requests.map((requestUrl) => `${requestUrl.searchParams.get('action')}:${requestUrl.searchParams.get('maxPrice') || ''}`);
+  assert.deepStrictEqual(actions, [
+    'serviceCountRent:',
+    'getNumber:0.0518',
+  ]);
+});
+
+test('phone verification helper reads alternate HeroSMS price fields above configured min price', async () => {
+  const requests = [];
+  const helpers = api.createPhoneVerificationHelpers({
+    addLog: async () => {},
+    ensureStep8SignupPageReady: async () => {},
+    fetchImpl: async (url) => {
+      const parsedUrl = new URL(url);
+      requests.push(parsedUrl);
+      const action = parsedUrl.searchParams.get('action');
+      const maxPrice = parsedUrl.searchParams.get('maxPrice');
+      if (action === 'serviceCountRent') {
+        return {
+          ok: true,
+          text: async () => JSON.stringify({
+            6: {
+              dr: [
+                { price: 0.045, count: 100 },
+                { price: 0.052, count: 100 },
+                { amount: 0.07, available: 100 },
+              ],
+            },
+          }),
+        };
+      }
+      if (action === 'getNumber' && maxPrice === '0.052') {
+        return {
+          ok: true,
+          text: async () => 'ACCESS_NUMBER:606060:628500000002',
+        };
+      }
+      throw new Error(`Unexpected HeroSMS action: ${action} @ ${maxPrice || 'no-price'}`);
+    },
+    getState: async () => ({ heroSmsApiKey: 'demo-key' }),
+    sendToContentScriptResilient: async () => ({}),
+    setState: async () => {},
+    sleepWithStop: async () => {},
+    throwIfStopped: () => {},
+  });
+
+  const activation = await helpers.requestPhoneActivation({
+    heroSmsApiKey: 'demo-key',
+    heroSmsCountryId: 6,
+    heroSmsCountryLabel: '印度尼西亚 (Indonesia)',
+    heroSmsMinPrice: '0.05',
+  });
+  assert.equal(activation.activationId, '606060');
+  const actions = requests.map((requestUrl) => `${requestUrl.searchParams.get('action')}:${requestUrl.searchParams.get('maxPrice') || ''}`);
+  assert.deepStrictEqual(actions, [
+    'serviceCountRent:',
+    'getNumber:0.052',
+  ]);
+});
+
+test('phone verification helper does not invent a price tier when all returned prices are below HeroSMS min price', async () => {
+  const requests = [];
+  const helpers = api.createPhoneVerificationHelpers({
+    addLog: async () => {},
+    ensureStep8SignupPageReady: async () => {},
+    fetchImpl: async (url) => {
+      const parsedUrl = new URL(url);
+      requests.push(parsedUrl);
+      const action = parsedUrl.searchParams.get('action');
+      if (action === 'serviceCountRent') {
+        return {
+          ok: true,
+          text: async () => JSON.stringify({
+            6: {
+              dr: {
+                prices: {
+                  0.04: 100,
+                  0.045: 100,
+                },
+              },
+            },
+          }),
+        };
+      }
+      throw new Error(`Unexpected HeroSMS action: ${action}`);
+    },
+    getState: async () => ({ heroSmsApiKey: 'demo-key' }),
+    sendToContentScriptResilient: async () => ({}),
+    setState: async () => {},
+    sleepWithStop: async () => {},
+    throwIfStopped: () => {},
+  });
+
+  await assert.rejects(
+    helpers.requestPhoneActivation({
+      heroSmsApiKey: 'demo-key',
+      heroSmsCountryId: 6,
+      heroSmsCountryLabel: '印度尼西亚 (Indonesia)',
+      heroSmsMinPrice: '0.05',
+      heroSmsActivationRetryRounds: 1,
+    }),
+    /no numbers within minPrice=0\.05; lowest listed=0\.04/i
+  );
+  const actions = requests.map((requestUrl) => `${requestUrl.searchParams.get('action')}:${requestUrl.searchParams.get('maxPrice') || ''}`);
+  assert.deepStrictEqual(actions, ['serviceCountRent:']);
 });
 
 test('phone verification helper stops when WRONG_MAX_PRICE exceeds configured max price limit', async () => {
@@ -721,13 +899,13 @@ test('phone verification helper stops when WRONG_MAX_PRICE exceeds configured ma
       const parsedUrl = new URL(url);
       requests.push(parsedUrl);
       const action = parsedUrl.searchParams.get('action');
-      if (action === 'getPrices') {
+      if (action === 'serviceCountRent') {
         return {
           ok: true,
           text: async () => buildHeroSmsPricesPayload({ cost: 0.08 }),
         };
       }
-      if (action === 'getNumber' || action === 'getNumberV2') {
+      if (action === 'getNumber') {
         return {
           ok: false,
           text: async () => 'WRONG_MAX_PRICE:0.08',
@@ -749,9 +927,8 @@ test('phone verification helper stops when WRONG_MAX_PRICE exceeds configured ma
 
   const actions = requests.map((requestUrl) => `${requestUrl.searchParams.get('action')}:${requestUrl.searchParams.get('maxPrice') || ''}`);
   assert.deepStrictEqual(actions, [
-    'getPrices:',
+    'serviceCountRent:',
     'getNumber:0.05',
-    'getNumberV2:0.05',
   ]);
 });
 
@@ -765,7 +942,7 @@ test('phone verification helper falls back to plain getNumber when priced reques
       const parsedUrl = new URL(url);
       requests.push(parsedUrl);
       const action = parsedUrl.searchParams.get('action');
-      if (action === 'getPrices') {
+      if (action === 'serviceCountRent') {
         return {
           ok: true,
           text: async () => buildHeroSmsPricesPayload(),
@@ -802,7 +979,7 @@ test('phone verification helper falls back to plain getNumber when priced reques
     maxUses: 3,
   });
   assert.equal(requests.length, 3);
-  assert.equal(requests[0].searchParams.get('action'), 'getPrices');
+  assert.equal(requests[0].searchParams.get('action'), 'serviceCountRent');
   assert.equal(requests[1].searchParams.get('action'), 'getNumber');
   assert.equal(requests[1].searchParams.get('maxPrice'), '0.08');
   assert.equal(requests[1].searchParams.get('fixedPrice'), 'true');
@@ -828,7 +1005,7 @@ test('phone verification helper completes add-phone flow, clears current activat
       const parsedUrl = new URL(url);
       requests.push(parsedUrl);
       const action = parsedUrl.searchParams.get('action');
-      if (action === 'getPrices') {
+      if (action === 'serviceCountRent') {
         return {
           ok: true,
           text: async () => buildHeroSmsPricesPayload(),
@@ -928,7 +1105,7 @@ test('phone verification helper completes add-phone flow, clears current activat
   ]);
 
   const actions = requests.map((url) => url.searchParams.get('action'));
-  assert.deepStrictEqual(actions, ['getPrices', 'getNumber', 'getStatus', 'setStatus']);
+  assert.deepStrictEqual(actions, ['serviceCountRent', 'getNumber', 'getStatus']);
 });
 
 test('phone verification helper uses the configured HeroSMS country for both number acquisition and add-phone submission', async () => {
@@ -950,7 +1127,7 @@ test('phone verification helper uses the configured HeroSMS country for both num
       const parsedUrl = new URL(url);
       requests.push(parsedUrl);
       const action = parsedUrl.searchParams.get('action');
-      if (action === 'getPrices') {
+      if (action === 'serviceCountRent') {
         return {
           ok: true,
           text: async () => buildHeroSmsPricesPayload({ country: '16' }),
@@ -1013,7 +1190,7 @@ test('phone verification helper uses the configured HeroSMS country for both num
     consentReady: true,
     url: 'https://auth.openai.com/authorize',
   });
-  assert.equal(requests[0].searchParams.get('action'), 'getPrices');
+  assert.equal(requests[0].searchParams.get('action'), 'serviceCountRent');
   assert.equal(requests[0].searchParams.get('country'), '16');
   assert.equal(requests[1].searchParams.get('action'), 'getNumber');
   assert.equal(requests[1].searchParams.get('country'), '16');
@@ -1054,7 +1231,7 @@ test('phone verification helper skips reusable activation when reuse toggle is d
       if (action === 'reactivate') {
         throw new Error('reactivate should not be called when reuse is disabled');
       }
-      if (action === 'getPrices') {
+      if (action === 'serviceCountRent') {
         return { ok: true, text: async () => buildHeroSmsPricesPayload() };
       }
       if (action === 'getNumber') {
@@ -1128,7 +1305,7 @@ test('phone verification helper replaces numbers in step 9 and stops after repla
         const action = parsedUrl.searchParams.get('action');
         const id = parsedUrl.searchParams.get('id');
 
-        if (action === 'getPrices') {
+        if (action === 'serviceCountRent') {
           return {
             ok: true,
             text: async () => buildHeroSmsPricesPayload(),
@@ -1231,7 +1408,7 @@ test('phone verification helper honors timeout-window and poll-round settings be
       const parsedUrl = new URL(url);
       requests.push(parsedUrl);
       const action = parsedUrl.searchParams.get('action');
-      if (action === 'getPrices') {
+      if (action === 'serviceCountRent') {
         return { ok: true, text: async () => buildHeroSmsPricesPayload() };
       }
       if (action === 'getNumber') {
@@ -1313,7 +1490,7 @@ test('phone verification helper respects configured number replacement limit', a
       requests.push(parsedUrl);
       const action = parsedUrl.searchParams.get('action');
       const id = parsedUrl.searchParams.get('id');
-      if (action === 'getPrices') {
+      if (action === 'serviceCountRent') {
         return {
           ok: true,
           text: async () => buildHeroSmsPricesPayload(),
@@ -1384,11 +1561,11 @@ test('phone verification helper respects configured number replacement limit', a
 
   const actions = requests.map((requestUrl) => requestUrl.searchParams.get('action'));
   assert.deepStrictEqual(actions, [
-    'getPrices',
+    'serviceCountRent',
     'getNumber',
     'getStatus',
     'setStatus',
-    'getPrices',
+    'serviceCountRent',
     'getNumber',
     'getStatus',
     'setStatus',
@@ -1421,7 +1598,7 @@ test('phone verification helper reuses the current number first when code submis
       const action = parsedUrl.searchParams.get('action');
       const id = parsedUrl.searchParams.get('id');
 
-      if (action === 'getPrices') {
+      if (action === 'serviceCountRent') {
         return {
           ok: true,
           text: async () => buildHeroSmsPricesPayload(),
@@ -1508,11 +1685,10 @@ test('phone verification helper reuses the current number first when code submis
 
   const actions = requests.map((url) => `${url.searchParams.get('action')}:${url.searchParams.get('id') || ''}`);
   assert.deepStrictEqual(actions, [
-    'getPrices:',
+    'serviceCountRent:',
     'getNumber:',
     'getStatus:111111',
     'getStatus:111111',
-    'setStatus:111111',
   ]);
   assert.deepStrictEqual(currentState.currentPhoneActivation, null);
   assert.deepStrictEqual(currentState.reusablePhoneActivation, {
@@ -1552,7 +1728,7 @@ test('phone verification helper immediately replaces number when page says the p
       const action = parsedUrl.searchParams.get('action');
       const id = parsedUrl.searchParams.get('id');
 
-      if (action === 'getPrices') {
+      if (action === 'serviceCountRent') {
         return {
           ok: true,
           text: async () => buildHeroSmsPricesPayload(),
@@ -1728,6 +1904,7 @@ test('phone verification helper reuses the same number up to three successful re
   });
   assert.equal(requests[0].searchParams.get('action'), 'reactivate');
   assert.equal(requests[0].searchParams.get('id'), '123456');
+  assert.equal(requests.some((url) => url.searchParams.get('action') === 'setStatus' && url.searchParams.get('status') === '6'), true);
   assert.deepStrictEqual(currentState.reusablePhoneActivation, null);
 });
 
@@ -1819,7 +1996,103 @@ test('phone verification helper keeps maxUses behavior for reused V2 activations
   });
   const actions = requests.map((url) => url.searchParams.get('action'));
   assert.deepStrictEqual(actions, ['reactivate', 'getStatusV2', 'setStatus']);
+  assert.equal(requests.at(-1).searchParams.get('status'), '6');
   assert.deepStrictEqual(currentState.reusablePhoneActivation, null);
+});
+
+test('phone verification helper keeps reusable HeroSMS activation before the third successful use', async () => {
+  const requests = [];
+  let currentState = {
+    heroSmsApiKey: 'demo-key',
+    verificationResendCount: 0,
+    currentPhoneActivation: null,
+    reusablePhoneActivation: {
+      activationId: '123456',
+      phoneNumber: '66959916439',
+      provider: 'hero-sms',
+      serviceCode: 'dr',
+      countryId: 52,
+      successfulUses: 1,
+      maxUses: 3,
+    },
+  };
+
+  const helpers = api.createPhoneVerificationHelpers({
+    addLog: async () => {},
+    ensureStep8SignupPageReady: async () => {},
+    fetchImpl: async (url) => {
+      const parsedUrl = new URL(url);
+      requests.push(parsedUrl);
+      const action = parsedUrl.searchParams.get('action');
+      if (action === 'reactivate') {
+        return {
+          ok: true,
+          text: async () => JSON.stringify({
+            activationId: '222333',
+            phoneNumber: '66959916439',
+          }),
+        };
+      }
+      if (action === 'getStatus') {
+        return {
+          ok: true,
+          text: async () => 'STATUS_OK:654321',
+        };
+      }
+      if (action === 'setStatus') {
+        return {
+          ok: true,
+          text: async () => 'ACCESS_ACTIVATION',
+        };
+      }
+      throw new Error(`Unexpected HeroSMS action: ${action}`);
+    },
+    getOAuthFlowStepTimeoutMs: async (defaultTimeoutMs) => defaultTimeoutMs,
+    getState: async () => ({ ...currentState }),
+    sendToContentScriptResilient: async (_source, message) => {
+      if (message.type === 'SUBMIT_PHONE_NUMBER') {
+        return {
+          phoneVerificationPage: true,
+          url: 'https://auth.openai.com/phone-verification',
+        };
+      }
+      if (message.type === 'SUBMIT_PHONE_VERIFICATION_CODE') {
+        return {
+          success: true,
+          consentReady: true,
+          url: 'https://auth.openai.com/authorize',
+        };
+      }
+      throw new Error(`Unexpected content-script message: ${message.type}`);
+    },
+    setState: async (updates) => {
+      currentState = { ...currentState, ...updates };
+    },
+    sleepWithStop: async () => {},
+    throwIfStopped: () => {},
+  });
+
+  const result = await helpers.completePhoneVerificationFlow(1, {
+    addPhonePage: true,
+    phoneVerificationPage: false,
+    url: 'https://auth.openai.com/add-phone',
+  });
+
+  assert.deepStrictEqual(result, {
+    success: true,
+    consentReady: true,
+    url: 'https://auth.openai.com/authorize',
+  });
+  assert.deepStrictEqual(currentState.reusablePhoneActivation, {
+    activationId: '222333',
+    phoneNumber: '66959916439',
+    provider: 'hero-sms',
+    serviceCode: 'dr',
+    countryId: 52,
+    successfulUses: 2,
+    maxUses: 3,
+  });
+  assert.equal(requests.some((url) => url.searchParams.get('action') === 'setStatus' && url.searchParams.get('status') === '6'), false);
 });
 
 test('phone verification helper replaces number immediately when resend is throttled and does not spam resend clicks', async () => {
@@ -1854,7 +2127,7 @@ test('phone verification helper replaces number immediately when resend is throt
       requests.push(parsedUrl);
       const action = parsedUrl.searchParams.get('action');
       const id = parsedUrl.searchParams.get('id');
-      if (action === 'getPrices') {
+      if (action === 'serviceCountRent') {
         return { ok: true, text: async () => buildHeroSmsPricesPayload() };
       }
       if (action === 'getNumber') {
@@ -1954,7 +2227,7 @@ test('phone verification helper falls back to the next country after repeated sm
       const id = parsedUrl.searchParams.get('id');
       const country = parsedUrl.searchParams.get('country');
 
-      if (action === 'getPrices') {
+      if (action === 'serviceCountRent') {
         return {
           ok: true,
           text: async () => JSON.stringify({

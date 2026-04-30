@@ -51,6 +51,7 @@ function extractFunction(name) {
 function createApi({
   refreshImpl,
   runCount = 3,
+  mutateRunCountOnPersist = null,
   plusModeEnabled = false,
   plusRiskEnabled = false,
   plusRiskConfirmed = true,
@@ -71,7 +72,7 @@ const inputAutoSkipFailuresThreadIntervalMinutes = { value: '5' };
 const inputAutoDelayEnabled = { checked: false };
 const inputAutoDelayMinutes = { value: '30' };
 const btnAutoRun = { disabled: false, innerHTML: '' };
-const inputRunCount = { disabled: false };
+const inputRunCount = { disabled: false, value: ${JSON.stringify(String(Math.max(1, Number(runCount) || 1)))} };
 const chrome = {
   runtime: {
     async sendMessage(message) {
@@ -87,8 +88,9 @@ const console = {
 };
 async function persistCurrentSettingsForAction() {
   events.push({ type: 'sync-settings' });
+  ${mutateRunCountOnPersist !== null ? `inputRunCount.value = ${JSON.stringify(String(mutateRunCountOnPersist))};` : ''}
 }
-function getRunCountValue() { return ${Math.max(1, Number(runCount) || 1)}; }
+function getRunCountValue() { return Math.max(1, parseInt(inputRunCount.value, 10) || 1); }
 function normalizeAutoRunThreadIntervalMinutes(value) { return Number(value) || 0; }
 function shouldOfferAutoModeChoice() { return false; }
 async function openAutoStartChoiceDialog() { throw new Error('should not be called'); }
@@ -158,6 +160,20 @@ test('startAutoRunFromCurrentSettings continues auto run when contribution conte
   );
   assert.match(String(events[1].args[0]), /Failed to refresh contribution content hint before auto run/);
   assert.equal(events[3].message.type, 'AUTO_RUN');
+});
+
+test('startAutoRunFromCurrentSettings keeps requested run count if settings save refreshes old auto-run state', async () => {
+  const api = createApi({
+    runCount: 3,
+    mutateRunCountOnPersist: 1,
+  });
+
+  const result = await api.startAutoRunFromCurrentSettings();
+  const events = api.getEvents();
+
+  assert.equal(result, true);
+  assert.equal(events.at(-1).message.type, 'AUTO_RUN');
+  assert.equal(events.at(-1).message.payload.totalRuns, 3);
 });
 
 test('startAutoRunFromCurrentSettings does not block auto run when contribution content has updates', async () => {

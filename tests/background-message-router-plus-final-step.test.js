@@ -8,6 +8,8 @@ const api = new Function('self', `${source}; return self.MultiPageBackgroundMess
 
 test('message router appends success record on Plus final step instead of hard-coded step 10', async () => {
   const appendCalls = [];
+  const savedRegisteredAccounts = [];
+  const removedRegisteredAccounts = [];
   const router = api.createMessageRouter({
     addLog: async () => {},
     appendAccountRunRecord: async (...args) => {
@@ -38,12 +40,23 @@ test('message router appends success record on Plus final step instead of hard-c
     fetchGeneratedEmail: async () => '',
     finalizeStep3Completion: async () => {},
     finalizeIcloudAliasAfterSuccessfulFlow: async () => {},
+    removeCurrentRegisteredAccountAfterPlatformSuccess: async (state) => {
+      removedRegisteredAccounts.push(state.email);
+    },
+    saveRegisteredAccountAfterProfileSuccess: async (state) => {
+      savedRegisteredAccounts.push({ email: state.email, password: state.password });
+    },
     findHotmailAccount: async () => null,
     flushCommand: async () => {},
     getCurrentLuckmailPurchase: () => null,
     getPendingAutoRunTimerPlan: () => null,
     getSourceLabel: () => '',
-    getState: async () => ({ plusModeEnabled: true, stepStatuses: { 13: 'pending' } }),
+    getState: async () => ({
+      plusModeEnabled: true,
+      stepStatuses: { 5: 'pending', 13: 'pending' },
+      email: 'registered@example.com',
+      password: 'Secret123!',
+    }),
     getLastStepIdForState: () => 13,
     getStepDefinitionForState: (step) => ({ id: step, key: step === 10 ? 'oauth-login' : 'platform-verify' }),
     getStepIdsForState: () => [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
@@ -102,4 +115,111 @@ test('message router appends success record on Plus final step instead of hard-c
 
   assert.equal(appendCalls.length, 1);
   assert.equal(appendCalls[0][0], 'success');
+  assert.deepStrictEqual(removedRegisteredAccounts, ['registered@example.com']);
+  assert.deepStrictEqual(savedRegisteredAccounts, []);
+});
+
+test('message router saves registered account when profile step completes', async () => {
+  const savedRegisteredAccounts = [];
+  const router = api.createMessageRouter({
+    addLog: async () => {},
+    appendAccountRunRecord: async () => {},
+    batchUpdateLuckmailPurchases: async () => {},
+    buildLocalhostCleanupPrefix: () => '',
+    buildLuckmailSessionSettingsPayload: () => ({}),
+    buildPersistentSettingsPayload: () => ({}),
+    broadcastDataUpdate: () => {},
+    cancelScheduledAutoRun: async () => {},
+    checkIcloudSession: async () => {},
+    clearAutoRunTimerAlarm: async () => {},
+    clearLuckmailRuntimeState: async () => {},
+    clearStopRequest: () => {},
+    closeLocalhostCallbackTabs: async () => {},
+    closeTabsByUrlPrefix: async () => {},
+    deleteHotmailAccount: async () => {},
+    deleteHotmailAccounts: async () => {},
+    deleteIcloudAlias: async () => {},
+    deleteUsedIcloudAliases: async () => {},
+    disableUsedLuckmailPurchases: async () => {},
+    doesStepUseCompletionSignal: () => false,
+    ensureManualInteractionAllowed: async () => ({}),
+    executeStep: async () => {},
+    executeStepViaCompletionSignal: async () => {},
+    exportSettingsBundle: async () => ({}),
+    fetchGeneratedEmail: async () => '',
+    finalizeStep3Completion: async () => {},
+    finalizeIcloudAliasAfterSuccessfulFlow: async () => {},
+    findHotmailAccount: async () => null,
+    flushCommand: async () => {},
+    getCurrentLuckmailPurchase: () => null,
+    getPendingAutoRunTimerPlan: () => null,
+    getSourceLabel: () => '',
+    getState: async () => ({
+      plusModeEnabled: false,
+      stepStatuses: { 5: 'pending' },
+      email: 'registered@example.com',
+      password: 'Secret123!',
+    }),
+    getLastStepIdForState: () => 10,
+    getStepDefinitionForState: (step) => ({ id: step, key: step === 5 ? 'fill-profile' : 'platform-verify' }),
+    getStepIdsForState: () => [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    getTabId: async () => null,
+    getStopRequested: () => false,
+    handleAutoRunLoopUnhandledError: async () => {},
+    handleCloudflareSecurityBlocked: async () => '',
+    importSettingsBundle: async () => {},
+    invalidateDownstreamAfterStepRestart: async () => {},
+    isCloudflareSecurityBlockedError: () => false,
+    isAutoRunLockedState: () => false,
+    isHotmailProvider: () => false,
+    isLocalhostOAuthCallbackUrl: () => true,
+    isLuckmailProvider: () => false,
+    isStopError: () => false,
+    isTabAlive: async () => false,
+    launchAutoRunTimerPlan: async () => {},
+    listIcloudAliases: async () => [],
+    listLuckmailPurchasesForManagement: async () => [],
+    normalizeHotmailAccounts: (items) => items,
+    normalizeRunCount: (value) => value,
+    AUTO_RUN_TIMER_KIND_SCHEDULED_START: 'scheduled',
+    notifyStepComplete: () => {},
+    notifyStepError: () => {},
+    patchHotmailAccount: async () => {},
+    patchMail2925Account: async () => {},
+    registerTab: async () => {},
+    requestStop: async () => {},
+    resetState: async () => {},
+    resumeAutoRun: async () => {},
+    scheduleAutoRun: async () => {},
+    selectLuckmailPurchase: async () => {},
+    setCurrentHotmailAccount: async () => {},
+    setCurrentMail2925Account: async () => {},
+    setContributionMode: async () => {},
+    setEmailState: async () => {},
+    setEmailStateSilently: async () => {},
+    setIcloudAliasPreservedState: async () => {},
+    setIcloudAliasUsedState: async () => {},
+    setLuckmailPurchaseDisabledState: async () => {},
+    setLuckmailPurchasePreservedState: async () => {},
+    setLuckmailPurchaseUsedState: async () => {},
+    setPersistentSettings: async () => {},
+    setState: async () => {},
+    setStepStatus: async () => {},
+    skipAutoRunCountdown: async () => false,
+    skipStep: async () => {},
+    startAutoRunLoop: async () => {},
+    syncHotmailAccounts: async () => {},
+    testHotmailAccountMailAccess: async () => {},
+    upsertHotmailAccount: async () => {},
+    verifyHotmailAccount: async () => {},
+    saveRegisteredAccountAfterProfileSuccess: async (state) => {
+      savedRegisteredAccounts.push({ email: state.email, password: state.password });
+    },
+  });
+
+  await router.handleMessage({ type: 'STEP_COMPLETE', step: 5, payload: {} }, {});
+
+  assert.deepStrictEqual(savedRegisteredAccounts, [
+    { email: 'registered@example.com', password: 'Secret123!' },
+  ]);
 });

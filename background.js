@@ -302,6 +302,7 @@ const DEFAULT_HERO_SMS_REUSE_ENABLED = true;
 const HERO_SMS_ACQUIRE_PRIORITY_COUNTRY = 'country';
 const HERO_SMS_ACQUIRE_PRIORITY_PRICE = 'price';
 const DEFAULT_HERO_SMS_ACQUIRE_PRIORITY = HERO_SMS_ACQUIRE_PRIORITY_COUNTRY;
+const DEFAULT_HERO_SMS_MIN_PRICE = '0.05';
 const DISPLAY_TIMEZONE = 'Asia/Shanghai';
 const MICROSOFT_TOKEN_DNR_RULE_ID = 1001;
 const PERSISTENT_ALIAS_STATE_KEYS = [
@@ -311,6 +312,7 @@ const PERSISTENT_ALIAS_STATE_KEYS = [
   'icloudAliasCacheAt',
 ];
 const ACCOUNT_RUN_HISTORY_STORAGE_KEY = 'accountRunHistory';
+const REGISTERED_ACCOUNT_RESUME_STATUS = 'registered_pending_resume';
 const CONTRIBUTION_RUNTIME_DEFAULTS = self.MultiPageBackgroundContributionOAuth?.RUNTIME_DEFAULTS || {
   contributionMode: false,
   contributionModeExpected: false,
@@ -511,6 +513,7 @@ const PERSISTED_SETTING_DEFAULTS = {
   heroSmsApiKey: '',
   heroSmsReuseEnabled: DEFAULT_HERO_SMS_REUSE_ENABLED,
   heroSmsAcquirePriority: DEFAULT_HERO_SMS_ACQUIRE_PRIORITY,
+  heroSmsMinPrice: DEFAULT_HERO_SMS_MIN_PRICE,
   heroSmsMaxPrice: '',
   heroSmsCountryId: HERO_SMS_COUNTRY_ID,
   heroSmsCountryLabel: HERO_SMS_COUNTRY_LABEL,
@@ -1525,6 +1528,8 @@ function normalizePersistentSettingValue(key, value) {
       return Boolean(value);
     case 'heroSmsAcquirePriority':
       return normalizeHeroSmsAcquirePriority(value);
+    case 'heroSmsMinPrice':
+      return normalizeHeroSmsMaxPrice(value) || DEFAULT_HERO_SMS_MIN_PRICE;
     case 'heroSmsMaxPrice':
       return normalizeHeroSmsMaxPrice(value);
     case 'heroSmsCountryId':
@@ -1715,12 +1720,17 @@ function buildSettingsExportFilename(date = new Date()) {
 }
 
 async function exportSettingsBundle() {
-  const settings = await getPersistedSettings();
+  const [settings, state] = await Promise.all([
+    getPersistedSettings(),
+    getState(),
+  ]);
+  const registeredAccounts = normalizeRegisteredAccountPool(state.accounts);
   const bundle = {
     schemaVersion: SETTINGS_EXPORT_SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
     extensionVersion: chrome.runtime.getManifest().version,
     settings,
+    registeredAccounts,
   };
 
   return {
@@ -1750,11 +1760,15 @@ async function importSettingsBundle(configBundle) {
     fillDefaults: true,
     requireKnownKeys: true,
   });
+  const importedRegisteredAccounts = normalizeRegisteredAccountPool(
+    configBundle.registeredAccounts || configBundle.accounts || configBundle.settings.accounts
+  );
 
   await setPersistentSettings(importedSettings);
 
   const sessionUpdates = {
     ...importedSettings,
+    accounts: importedRegisteredAccounts,
     currentHotmailAccountId: null,
     email: null,
   };
@@ -1762,6 +1776,7 @@ async function importSettingsBundle(configBundle) {
   await setState(sessionUpdates);
   broadcastDataUpdate({
     ...importedSettings,
+    accounts: importedRegisteredAccounts,
     currentHotmailAccountId: null,
     ...(sessionUpdates.email !== undefined ? { email: sessionUpdates.email } : {}),
   });
@@ -1799,6 +1814,254 @@ async function setEmailState(email) {
 async function setPasswordState(password) {
   await setState({ password });
   broadcastDataUpdate({ password });
+}
+
+const REGISTERED_ACCOUNT_MAIL_CONFIG_KEYS = [
+  'mailProvider',
+  'emailGenerator',
+  'mail2925Mode',
+  'mail2925UseAccountPool',
+  'currentMail2925AccountId',
+  'mail2925BaseEmail',
+  'gmailBaseEmail',
+  'inbucketHost',
+  'inbucketMailbox',
+  'icloudHostPreference',
+  'preferredIcloudHost',
+  'icloudTargetMailboxType',
+  'icloudForwardMailProvider',
+  'icloudFetchMode',
+  'cloudflareTempEmailBaseUrl',
+  'cloudflareTempEmailAdminAuth',
+  'cloudflareTempEmailCustomAuth',
+  'cloudflareTempEmailReceiveMailbox',
+  'cloudflareTempEmailUseRandomSubdomain',
+  'cloudflareTempEmailDomain',
+  'cloudflareTempEmailDomains',
+  'hotmailServiceMode',
+  'hotmailRemoteBaseUrl',
+  'hotmailLocalBaseUrl',
+  'currentHotmailAccountId',
+  'luckmailBaseUrl',
+  'luckmailEmailType',
+  'luckmailDomain',
+  'currentLuckmailPurchase',
+  'currentLuckmailMailCursor',
+];
+
+function cloneRegisteredAccountMailConfigValue(key, value) {
+  if (key === 'cloudflareTempEmailDomains') {
+    return normalizeCloudflareTempEmailDomains(value);
+  }
+  if (key === 'currentLuckmailPurchase') {
+    return value ? normalizeLuckmailPurchase(value) : null;
+  }
+  if (key === 'currentLuckmailMailCursor') {
+    return value ? normalizeLuckmailMailCursor(value) : null;
+  }
+  return value;
+}
+
+function buildRegisteredAccountMailConfigSnapshot(state = {}) {
+  const snapshot = {};
+  for (const key of REGISTERED_ACCOUNT_MAIL_CONFIG_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(state || {}, key)) {
+      continue;
+    }
+    snapshot[key] = cloneRegisteredAccountMailConfigValue(key, state[key]);
+  }
+  snapshot.mailProvider = normalizeMailProvider(snapshot.mailProvider || state?.mailProvider);
+  snapshot.emailGenerator = normalizeEmailGenerator(snapshot.emailGenerator || state?.emailGenerator);
+  return snapshot;
+}
+
+function normalizeRegisteredAccountMailConfigSnapshot(mailConfig = {}) {
+  if (!mailConfig || typeof mailConfig !== 'object' || Array.isArray(mailConfig)) {
+    return {};
+  }
+  const snapshot = {};
+  for (const key of REGISTERED_ACCOUNT_MAIL_CONFIG_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(mailConfig, key)) {
+      continue;
+    }
+    snapshot[key] = cloneRegisteredAccountMailConfigValue(key, mailConfig[key]);
+  }
+  if (snapshot.mailProvider !== undefined) {
+    snapshot.mailProvider = normalizeMailProvider(snapshot.mailProvider);
+  }
+  if (snapshot.emailGenerator !== undefined) {
+    snapshot.emailGenerator = normalizeEmailGenerator(snapshot.emailGenerator);
+  }
+  if (snapshot.mail2925Mode !== undefined) {
+    snapshot.mail2925Mode = normalizeMail2925Mode(snapshot.mail2925Mode);
+  }
+  if (snapshot.mail2925UseAccountPool !== undefined) {
+    snapshot.mail2925UseAccountPool = Boolean(snapshot.mail2925UseAccountPool);
+  }
+  return snapshot;
+}
+
+function getRegisteredAccountMailConfigRestorePayload(account = {}) {
+  return normalizeRegisteredAccountMailConfigSnapshot(account?.mailConfig);
+}
+
+function normalizeRegisteredAccountRecord(account = {}) {
+  const email = String(account?.email || '').trim();
+  const password = String(account?.password || '').trim();
+  if (!email || !password) {
+    return null;
+  }
+  const createdAt = Number(account?.createdAt) || Date.now();
+  const updatedAt = Number(account?.updatedAt) || createdAt;
+  const status = String(account?.status || REGISTERED_ACCOUNT_RESUME_STATUS).trim() || REGISTERED_ACCOUNT_RESUME_STATUS;
+  const mailConfig = normalizeRegisteredAccountMailConfigSnapshot(account?.mailConfig);
+  return {
+    email,
+    password,
+    createdAt,
+    updatedAt,
+    status,
+    mailConfig,
+  };
+}
+
+function normalizeRegisteredAccountPool(accounts = []) {
+  if (!Array.isArray(accounts)) {
+    return [];
+  }
+  const byEmail = new Map();
+  for (const account of accounts) {
+    const normalized = normalizeRegisteredAccountRecord(account);
+    if (!normalized) {
+      continue;
+    }
+    byEmail.set(normalized.email.toLowerCase(), normalized);
+  }
+  return [...byEmail.values()].sort((left, right) => {
+    const leftTime = Number(left.createdAt) || 0;
+    const rightTime = Number(right.createdAt) || 0;
+    return leftTime - rightTime;
+  });
+}
+
+async function saveRegisteredAccountAfterProfileSuccess(stateOverride = null) {
+  const state = stateOverride || await getState();
+  const email = String(state?.email || '').trim();
+  const password = String(state?.password || state?.customPassword || '').trim();
+  if (!email || !password) {
+    await addLog('步骤 5：当前邮箱或密码为空，无法写入已注册账号池。', 'warn');
+    return null;
+  }
+
+  const now = Date.now();
+  const accounts = normalizeRegisteredAccountPool(state.accounts);
+  const existing = accounts.find((account) => account.email.toLowerCase() === email.toLowerCase());
+  const nextRecord = normalizeRegisteredAccountRecord({
+    ...(existing || {}),
+    email,
+    password,
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+    status: REGISTERED_ACCOUNT_RESUME_STATUS,
+    mailConfig: buildRegisteredAccountMailConfigSnapshot(state),
+  });
+  const nextAccounts = existing
+    ? accounts.map((account) => (account.email.toLowerCase() === email.toLowerCase() ? nextRecord : account))
+    : [...accounts, nextRecord];
+
+  await setState({ accounts: nextAccounts });
+  broadcastDataUpdate({ accounts: nextAccounts });
+  await addLog(`步骤 5：已把注册成功账号 ${email} 暂存到待复用账号池。`, 'ok');
+  return nextRecord;
+}
+
+async function removeRegisteredAccountFromPool(email, stateOverride = null) {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  if (!normalizedEmail) {
+    return false;
+  }
+  const state = stateOverride || await getState();
+  const accounts = normalizeRegisteredAccountPool(state.accounts);
+  const nextAccounts = accounts.filter((account) => account.email.toLowerCase() !== normalizedEmail);
+  if (nextAccounts.length === accounts.length) {
+    return false;
+  }
+  await setState({ accounts: nextAccounts });
+  broadcastDataUpdate({ accounts: nextAccounts });
+  return true;
+}
+
+async function removeCurrentRegisteredAccountAfterPlatformSuccess(stateOverride = null) {
+  const state = stateOverride || await getState();
+  const email = String(state?.email || '').trim();
+  const removed = await removeRegisteredAccountFromPool(email, state);
+  if (removed) {
+    await addLog(`第 10 步成功：已从待复用账号池删除 ${email}。`, 'ok');
+  }
+  return removed;
+}
+
+async function prepareRegisteredAccountResumeForAutoRun(context = {}) {
+  const state = await getState();
+  const accounts = normalizeRegisteredAccountPool(state.accounts);
+  const account = accounts[0] || null;
+  if (!account) {
+    return null;
+  }
+
+  const authStartStep = typeof getAuthChainStartStepId === 'function'
+    ? getAuthChainStartStepId(state)
+    : FINAL_OAUTH_CHAIN_START_STEP;
+  const activeStepIds = typeof getStepIdsForState === 'function'
+    ? getStepIdsForState(state)
+    : STEP_IDS;
+  const profileStep = activeStepIds.find((stepId) => (
+    String(getStepDefinitionForState?.(stepId, state)?.key || '') === 'fill-profile'
+  ));
+  const afterProfileStep = activeStepIds.find((stepId) => Number(stepId) > Number(profileStep));
+  const clearCookiesStep = activeStepIds.find((stepId) => (
+    Number(stepId) < authStartStep
+    && String(getStepDefinitionForState?.(stepId, state)?.key || '') === 'clear-login-cookies'
+  ));
+  const startStep = Number(afterProfileStep) || Number(clearCookiesStep) || authStartStep;
+  const statuses = { ...(state.stepStatuses || {}) };
+  for (const stepId of activeStepIds) {
+    if (Number(stepId) < startStep) {
+      statuses[stepId] = 'skipped';
+    }
+  }
+  const mailConfigRestore = getRegisteredAccountMailConfigRestorePayload(account);
+  const restoredMailProviderLabel = getMailConfig({
+    ...state,
+    ...mailConfigRestore,
+  })?.label || mailConfigRestore.mailProvider || '当前邮箱服务';
+
+  await setState({
+    ...mailConfigRestore,
+    email: account.email,
+    password: account.password,
+    stepStatuses: statuses,
+    registeredAccountResumeEmail: account.email,
+    registeredAccountResumeStartedAt: Date.now(),
+  });
+  broadcastDataUpdate({
+    ...mailConfigRestore,
+    email: account.email,
+    password: account.password,
+    registeredAccountResumeEmail: account.email,
+  });
+  await addLog(
+    `自动运行：检测到第 5 步后未完成的账号 ${account.email}，已恢复邮箱类型 ${restoredMailProviderLabel}，本轮跳过注册，从步骤 ${startStep} 继续后续流程。`,
+    'warn'
+  );
+
+  return {
+    account,
+    startStep,
+    targetRun: context.targetRun,
+    totalRuns: context.totalRuns,
+    attemptRun: context.attemptRun,
+  };
 }
 
 function buildContributionModeState(enabled, persistedSettings = {}, currentState = {}) {
@@ -7088,6 +7351,13 @@ async function handleStepData(step, payload) {
     return messageRouter.handleStepData(step, payload);
   }
 
+  const stateForStep = await getState();
+  const stepKey = getStepExecutionKeyForState(step, stateForStep);
+  if (stepKey === 'fill-profile') {
+    await saveRegisteredAccountAfterProfileSuccess(stateForStep);
+    return;
+  }
+
   switch (step) {
     case 1: {
       const updates = {};
@@ -7193,6 +7463,7 @@ async function handleStepData(step, payload) {
           ? CUSTOM_EMAIL_POOL_GENERATOR
           : 'custom-pool'
       );
+      await removeCurrentRegisteredAccountAfterPlatformSuccess(latestState);
       if ((shouldUseCustomRegistrationEmail(latestState) || shouldClearCustomPoolEmail) && latestState.email) {
         await setEmailStateSilently(null);
       }
@@ -8134,6 +8405,7 @@ const autoRunController = self.MultiPageBackgroundAutoRunController?.createAutoR
   normalizeAutoRunFallbackThreadIntervalMinutes,
   onAutoRunRoundSuccess: (payload = {}) => maybeSwitchIpProxyAfterAutoRunRoundSuccess(payload),
   persistAutoRunTimerPlan,
+  prepareRegisteredAccountResumeForAutoRun,
   resetState,
   runAutoSequenceFromStep: (...args) => runAutoSequenceFromStep(...args),
   runtime: {
@@ -9091,6 +9363,8 @@ const messageRouter = self.MultiPageBackgroundMessageRouter?.createMessageRouter
     );
   },
   finalizeIcloudAliasAfterSuccessfulFlow,
+  removeCurrentRegisteredAccountAfterPlatformSuccess,
+  saveRegisteredAccountAfterProfileSuccess,
   findHotmailAccount,
   flushCommand,
   getCurrentLuckmailPurchase,

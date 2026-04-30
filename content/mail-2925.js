@@ -669,27 +669,38 @@ function matchesMailFilters(text, senderFilters, subjectFilters) {
 }
 
 function extractVerificationCode(text, strictChatGPTCodeOnly = false) {
+  const normalized = String(text || '').replace(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi, ' ');
+  const codePattern = '(^|[^0-9])(\\d{6})(?![0-9])';
+  const pickCode = (match) => {
+    if (!match) return null;
+    return match[2] || match[1] || null;
+  };
+
   if (strictChatGPTCodeOnly) {
-    const strictMatch = String(text || '').match(/(?:your\s+chatgpt\s+code\s+is|(?:chatgpt\s+log-?in\s+code|suspicious\s+log-?in)[\s\S]{0,120}enter\s+this\s+code)[^0-9]{0,24}(\d{6})/i);
-    return strictMatch ? strictMatch[1] : null;
+    const strictMatch = normalized.match(new RegExp(`(?:your\\s+chatgpt\\s+code\\s+is|(?:chatgpt\\s+log-?in\\s+code|suspicious\\s+log-?in)[\\s\\S]{0,120}enter\\s+this\\s+code)[^0-9]{0,24}${codePattern}`, 'i'));
+    return pickCode(strictMatch);
   }
 
-  const normalized = String(text || '');
+  const matchCn = normalized.match(new RegExp(`(?:代码为|验证码[^0-9]*?)[\\s：:]*${codePattern}`));
+  if (matchCn) return pickCode(matchCn);
 
-  const matchCn = normalized.match(/(?:代码为|验证码[^0-9]*?)[\s：:]*(\d{6})/);
-  if (matchCn) return matchCn[1];
+  const matchOpenAiLogin = normalized.match(new RegExp(`(?:chatgpt\\s+log-?in\\s+code|enter\\s+this\\s+code)[^0-9]{0,24}${codePattern}`, 'i'));
+  if (matchOpenAiLogin) return pickCode(matchOpenAiLogin);
 
-  const matchOpenAiLogin = normalized.match(/(?:chatgpt\s+log-?in\s+code|enter\s+this\s+code)[^0-9]{0,24}(\d{6})/i);
-  if (matchOpenAiLogin) return matchOpenAiLogin[1];
+  const matchChatGPT = normalized.match(new RegExp(`your\\s+chatgpt\\s+code\\s+is\\s+${codePattern}`, 'i'));
+  if (matchChatGPT) return pickCode(matchChatGPT);
 
-  const matchChatGPT = normalized.match(/your\s+chatgpt\s+code\s+is\s+(\d{6})/i);
-  if (matchChatGPT) return matchChatGPT[1];
+  const matchVerification = normalized.match(new RegExp(`(?:verification\\s+code|temporary\\s+verification\\s+code|security\\s+code|one-?time\\s+code|your\\s+chatgpt\\s+code)[^0-9]{0,48}${codePattern}`, 'i'));
+  if (matchVerification) return pickCode(matchVerification);
 
-  const matchEn = normalized.match(/code[:\s]+is[:\s]+(\d{6})|code[:\s]+(\d{6})/i);
-  if (matchEn) return matchEn[1] || matchEn[2];
+  const matchEn = normalized.match(new RegExp(`(?:code[:\\s]+is[:\\s]+|code[:\\s]+)${codePattern}`, 'i'));
+  if (matchEn) return pickCode(matchEn);
 
-  const match6 = normalized.match(/\b(\d{6})\b/);
-  if (match6) return match6[1];
+  const matchAction = normalized.match(new RegExp(`(?:use|enter|input|type|输入|使用|填写|填入)[^0-9]{0,24}${codePattern}(?:[^0-9]{0,32}(?:continue|继续|完成))?`, 'i'));
+  if (matchAction) return pickCode(matchAction);
+
+  const matchContinue = normalized.match(new RegExp(`${codePattern}[^0-9]{0,32}(?:to\\s+continue|continue|继续|完成)`, 'i'));
+  if (matchContinue) return pickCode(matchContinue);
 
   return null;
 }
