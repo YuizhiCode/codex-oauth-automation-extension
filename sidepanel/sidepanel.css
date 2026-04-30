@@ -2011,6 +2011,58 @@ header {
   color: var(--text-muted);
 }
 
+.hero-sms-country-selected {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.hero-sms-country-selected-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.hero-sms-country-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.hero-sms-country-chip-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.hero-sms-country-chip-remove {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.hero-sms-country-chip-remove:hover {
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
 .hero-sms-reuse-max-inline {
   width: 100%;
   display: flex;

@@ -65,6 +65,7 @@ test('sidepanel html exposes phone verification toggle and dedicated HeroSMS row
   assert.match(html, /id="row-hero-sms-acquire-priority"/);
   assert.match(html, /id="select-hero-sms-acquire-priority"/);
   assert.match(html, /id="select-hero-sms-country"[^>]*multiple/);
+  assert.match(html, /id="hero-sms-country-selected"/);
   assert.doesNotMatch(html, /id="select-hero-sms-country-fallback"/);
   assert.match(html, /id="row-hero-sms-api-key"/);
   assert.match(html, /id="row-hero-sms-max-price"/);

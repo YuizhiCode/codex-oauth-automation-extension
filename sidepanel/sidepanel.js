@@ -326,6 +326,7 @@ const selectHeroSmsAcquirePriority = document.getElementById('select-hero-sms-ac
 const heroSmsCountryMenuShell = document.getElementById('hero-sms-country-menu-shell');
 const btnHeroSmsCountryMenu = document.getElementById('btn-hero-sms-country-menu');
 const heroSmsCountryMenu = document.getElementById('hero-sms-country-menu');
+const heroSmsCountrySelected = document.getElementById('hero-sms-country-selected');
 const btnHeroSmsCountryClear = document.getElementById('btn-hero-sms-country-clear');
 const btnHeroSmsPricePreview = document.getElementById('btn-hero-sms-price-preview');
 const displayHeroSmsPlatform = document.getElementById('display-hero-sms-platform');
@@ -3032,6 +3033,71 @@ function renderHeroSmsCountryFallbackOrder(countries = []) {
     .join(' -> ');
 }
 
+function removeHeroSmsSelectedCountry(countryId) {
+  const normalizedId = Math.floor(Number(countryId) || 0);
+  const countrySelect = selectHeroSmsCountry || selectHeroSmsCountryFallback;
+  if (!normalizedId || !countrySelect) {
+    return [];
+  }
+  const option = Array.from(countrySelect.options || []).find((entry) => Number(entry.value) === normalizedId);
+  if (!option) {
+    return syncHeroSmsFallbackSelectionOrderFromSelect({
+      enforceMax: true,
+      ensureDefault: true,
+      showLimitToast: false,
+    });
+  }
+
+  option.selected = false;
+  const selectedCountries = syncHeroSmsFallbackSelectionOrderFromSelect({
+    enforceMax: true,
+    ensureDefault: true,
+    showLimitToast: false,
+  });
+  updateHeroSmsPlatformDisplay(selectedCountries[0]?.label || DEFAULT_HERO_SMS_COUNTRY_LABEL);
+  markSettingsDirty(true);
+  saveSettings({ silent: true }).catch(() => { });
+  return selectedCountries;
+}
+
+function renderHeroSmsSelectedCountries(countries = []) {
+  if (!heroSmsCountrySelected) {
+    return;
+  }
+  const normalized = normalizeHeroSmsCountryFallbackList(countries);
+  heroSmsCountrySelected.innerHTML = '';
+  if (!normalized.length) {
+    const empty = document.createElement('span');
+    empty.className = 'data-value hero-sms-country-selected-empty';
+    empty.textContent = '暂无已选国家';
+    heroSmsCountrySelected.appendChild(empty);
+    return;
+  }
+
+  normalized.forEach((country, index) => {
+    const chip = document.createElement('span');
+    chip.className = 'hero-sms-country-chip';
+
+    const label = document.createElement('span');
+    label.className = 'hero-sms-country-chip-label';
+    label.textContent = `${index + 1}. ${country.label}`;
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'hero-sms-country-chip-remove';
+    removeBtn.setAttribute('aria-label', `删除已选国家 ${country.label}`);
+    removeBtn.title = `删除 ${country.label}`;
+    removeBtn.textContent = '×';
+    removeBtn.addEventListener('click', () => {
+      removeHeroSmsSelectedCountry(country.id);
+    });
+
+    chip.appendChild(label);
+    chip.appendChild(removeBtn);
+    heroSmsCountrySelected.appendChild(chip);
+  });
+}
+
 function setHeroSmsCountryMenuOpen(open) {
   const nextOpen = Boolean(open);
   if (btnHeroSmsCountryMenu) {
@@ -3239,6 +3305,7 @@ function syncHeroSmsFallbackSelectionOrderFromSelect(options = {}) {
     label: getHeroSmsCountryLabelById(id),
   }));
   renderHeroSmsCountryFallbackOrder(selectedCountries);
+  renderHeroSmsSelectedCountries(selectedCountries);
   renderHeroSmsCountryChoiceButtons();
   return selectedCountries;
 }
