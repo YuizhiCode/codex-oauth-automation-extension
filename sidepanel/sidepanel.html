@@ -33,8 +33,6 @@
     </div>
     <div class="header-btns">
       <div class="run-group">
-        <button id="btn-contribution-mode" class="btn btn-outline btn-sm btn-contribution-mode" type="button"
-          aria-pressed="false" title="进入贡献模式并打开官网页">贡献/使用教程</button>
         <input type="number" id="input-run-count" class="run-count-input" value="1" min="1" title="运行次数" />
         <button id="btn-auto-run" class="btn btn-success" title="自动执行全部步骤">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
@@ -83,7 +81,7 @@
   <div id="contribution-update-layer" class="contribution-update-layer" hidden>
     <div id="contribution-update-hint" class="contribution-update-hint" aria-live="polite" hidden>
       <p id="contribution-update-hint-text" class="contribution-update-hint-text">
-        公告 / 使用教程有更新了，可点上方“贡献/使用教程”查看。
+        公告 / 使用教程有更新了。
       </p>
       <button id="btn-dismiss-contribution-update-hint" class="contribution-update-hint-close" type="button"
         aria-label="关闭更新提示" title="关闭更新提示">×</button>
@@ -107,15 +105,34 @@
 
   <section id="data-section">
     <div id="settings-card" class="data-card">
-      <div class="data-row">
-        <span class="data-label">来源</span>
-        <select id="select-panel-mode" class="data-select">
-          <option value="cpa">CPA 面板</option>
-          <option value="sub2api">SUB2API</option>
-          <option value="codex2api">Codex2API</option>
-        </select>
+      <div class="section-mini-header">
+        <div class="section-mini-copy">
+          <span class="section-label">插件设置</span>
+          <span class="data-value">来源、邮箱、运行与回调参数</span>
+        </div>
+        <div class="section-mini-actions settings-card-header-actions">
+          <button id="btn-toggle-settings-section" class="btn btn-ghost btn-xs" type="button"
+            aria-expanded="false" aria-controls="row-settings-section-fold">展开设置</button>
+          <label class="toggle-switch" for="input-settings-section-expanded" title="展开或收起插件设置">
+            <input type="checkbox" id="input-settings-section-expanded" />
+            <span class="toggle-switch-track" aria-hidden="true">
+              <span class="toggle-switch-thumb"></span>
+            </span>
+          </label>
+        </div>
       </div>
-        <div id="contribution-mode-panel" class="contribution-mode-panel" hidden>
+      <div class="data-row settings-section-fold-row" id="row-settings-section-fold" style="display:none;">
+        <div id="settings-section-fold" class="settings-section-fold">
+          <div class="settings-section-fold-body">
+            <div class="data-row">
+              <span class="data-label">来源</span>
+              <select id="select-panel-mode" class="data-select">
+                <option value="cpa">CPA 面板</option>
+                <option value="sub2api">SUB2API</option>
+                <option value="codex2api">Codex2API</option>
+              </select>
+            </div>
+            <div id="contribution-mode-panel" class="contribution-mode-panel" hidden>
           <div class="contribution-mode-panel-header">
             <span class="section-label">贡献模式</span>
             <span id="contribution-mode-badge" class="contribution-mode-badge">CPA</span>
@@ -344,31 +361,9 @@
       </div>
       <div class="data-row registered-account-pool-row" id="row-registered-account-pool">
         <span class="data-label">复用账号池</span>
-        <div class="registered-account-pool-panel">
-          <div class="registered-account-pool-toolbar">
-            <span id="registered-account-pool-meta" class="data-value registered-account-pool-meta-text">共 0 条</span>
-            <input
-              type="search"
-              id="input-registered-account-pool-search"
-              class="data-input registered-account-pool-search"
-              placeholder="搜索邮箱"
-            />
-          </div>
-          <div class="registered-account-pool-bulkbar">
-            <label class="option-toggle registered-account-pool-select-all" for="checkbox-registered-account-pool-select-all">
-              <input type="checkbox" id="checkbox-registered-account-pool-select-all" />
-              <span id="registered-account-pool-selection-summary">已选 0 个</span>
-            </label>
-            <div class="registered-account-pool-actions">
-              <button id="btn-registered-account-pool-clear-search" class="btn btn-ghost btn-xs" type="button">清空筛选</button>
-              <button id="btn-registered-account-pool-clear-selection" class="btn btn-ghost btn-xs" type="button">清空已选</button>
-              <button id="btn-delete-selected-registered-accounts" class="btn btn-ghost btn-xs" type="button" hidden>批量删除</button>
-            </div>
-          </div>
-          <div id="registered-account-pool-list" class="registered-account-pool-list"></div>
-          <div class="registered-account-pool-footer">
-            <button id="btn-registered-account-pool-load-more" class="btn btn-outline btn-xs" type="button" hidden>加载更多</button>
-          </div>
+        <div class="registered-account-pool-summary-row">
+          <span id="registered-account-pool-summary" class="data-value registered-account-pool-summary">暂无待复用账号</span>
+          <button id="btn-open-registered-account-pool" class="btn btn-outline btn-sm" type="button">管理账号</button>
         </div>
       </div>
       <div class="data-row module-divider-start" id="row-auto-delay-settings">
@@ -418,15 +413,18 @@
           </div>
         </div>
       </div>
-      <div class="data-row module-divider-start" id="row-oauth-display">
-        <span class="data-label">OAuth</span>
-        <span id="display-oauth-url" class="data-value mono truncate">等待中...</span>
-      </div>
-      <div class="data-row">
-        <span class="data-label">回调</span>
-        <div class="data-inline data-value-actions">
-          <span id="display-localhost-url" class="data-value data-value-fill mono truncate">等待中...</span>
-          <button id="btn-save-settings" class="btn btn-outline btn-sm data-inline-btn" type="button">保存</button>
+            <div class="data-row module-divider-start" id="row-oauth-display">
+              <span class="data-label">OAuth</span>
+              <span id="display-oauth-url" class="data-value mono truncate">等待中...</span>
+            </div>
+            <div class="data-row">
+              <span class="data-label">回调</span>
+              <div class="data-inline data-value-actions">
+                <span id="display-localhost-url" class="data-value data-value-fill mono truncate">等待中...</span>
+                <button id="btn-save-settings" class="btn btn-outline btn-sm data-inline-btn" type="button">保存</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1193,6 +1191,53 @@
         <button id="btn-account-records-prev" class="btn btn-outline btn-xs" type="button">上一页</button>
         <span id="account-records-page-label" class="account-records-page-label mono">0 / 0</span>
         <button id="btn-account-records-next" class="btn btn-outline btn-xs" type="button">下一页</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="registered-account-pool-overlay" class="account-records-overlay" hidden>
+    <div class="account-records-panel registered-account-pool-dialog">
+      <div class="account-records-panel-header">
+        <div class="account-records-panel-copy">
+          <span class="account-records-panel-title">复用账号池</span>
+        </div>
+        <div class="account-records-panel-actions">
+          <button id="btn-close-registered-account-pool" class="modal-close" type="button" aria-label="关闭">×</button>
+        </div>
+      </div>
+      <div class="registered-account-pool-toolbar">
+        <span id="registered-account-pool-meta" class="account-records-panel-meta registered-account-pool-meta-text">共 0 条</span>
+        <input
+          type="search"
+          id="input-registered-account-pool-search"
+          class="data-input registered-account-pool-search"
+          placeholder="搜索邮箱 / 邮箱服务"
+        />
+      </div>
+      <div class="registered-account-pool-bulkbar">
+        <label class="option-toggle registered-account-pool-select-all" for="checkbox-registered-account-pool-select-all">
+          <input type="checkbox" id="checkbox-registered-account-pool-select-all" />
+          <span id="registered-account-pool-selection-summary">已选 0 个</span>
+        </label>
+        <div class="registered-account-pool-actions">
+          <button id="btn-registered-account-pool-clear-search" class="btn btn-ghost btn-xs" type="button">清空筛选</button>
+          <button id="btn-registered-account-pool-clear-selection" class="btn btn-ghost btn-xs" type="button">清空已选</button>
+          <button id="btn-delete-selected-registered-accounts" class="btn btn-ghost btn-xs" type="button" hidden>批量删除</button>
+        </div>
+      </div>
+      <div id="registered-account-pool-list" class="registered-account-pool-list"></div>
+      <div class="account-records-pagination registered-account-pool-pagination">
+        <label class="registered-account-pool-page-size">
+          <span>每页</span>
+          <select id="select-registered-account-pool-page-size" class="data-select registered-account-pool-page-size-select">
+            <option value="20">20</option>
+            <option value="40">40</option>
+            <option value="60">60</option>
+          </select>
+        </label>
+        <button id="btn-registered-account-pool-prev" class="btn btn-outline btn-xs" type="button">上一页</button>
+        <span id="registered-account-pool-page-label" class="account-records-page-label mono">0 / 0</span>
+        <button id="btn-registered-account-pool-next" class="btn btn-outline btn-xs" type="button">下一页</button>
       </div>
     </div>
   </div>

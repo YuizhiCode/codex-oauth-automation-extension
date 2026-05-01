@@ -55,6 +55,9 @@ function extractFunction(name) {
 test('sidepanel html exposes phone verification toggle and dedicated HeroSMS rows', () => {
   const html = fs.readFileSync('sidepanel/sidepanel.html', 'utf8');
 
+  assert.match(html, /id="btn-toggle-settings-section"/);
+  assert.match(html, /id="input-settings-section-expanded"/);
+  assert.match(html, /id="row-settings-section-fold"/);
   assert.match(html, /id="row-phone-verification-enabled"/);
   assert.match(html, /id="btn-toggle-phone-verification-section"/);
   assert.match(html, /id="row-phone-verification-fold"/);
@@ -81,6 +84,77 @@ test('sidepanel html exposes phone verification toggle and dedicated HeroSMS row
   assert.match(html, /id="row-phone-code-poll-interval-seconds"/);
   assert.match(html, /id="row-phone-code-poll-max-rounds"/);
   assert.doesNotMatch(html, /id="input-account-run-history-text-enabled"/);
+});
+
+test('settings section expansion state uses collapsed-by-default toggle semantics', () => {
+  const api = new Function(`
+let settingsSectionExpanded = false;
+const SETTINGS_SECTION_EXPANDED_STORAGE_KEY = 'multipage-settings-section-expanded';
+const localStorageState = new Map();
+const globalThis = {
+  localStorage: {
+    getItem(key) {
+      return localStorageState.has(key) ? localStorageState.get(key) : null;
+    },
+    setItem(key, value) {
+      localStorageState.set(key, String(value));
+    },
+    removeItem(key) {
+      localStorageState.delete(key);
+    },
+  },
+};
+const btnToggleSettingsSection = {
+  textContent: '',
+  title: '',
+  attrs: {},
+  setAttribute(name, value) {
+    this.attrs[name] = String(value);
+  },
+};
+const inputSettingsSectionExpanded = { checked: false };
+const rowSettingsSectionFold = { style: { display: 'none' } };
+
+${extractFunction('readSettingsSectionExpanded')}
+${extractFunction('persistSettingsSectionExpanded')}
+${extractFunction('updateSettingsSectionUI')}
+${extractFunction('setSettingsSectionExpanded')}
+${extractFunction('toggleSettingsSectionExpanded')}
+${extractFunction('initSettingsSectionExpandedState')}
+
+return {
+  btnToggleSettingsSection,
+  inputSettingsSectionExpanded,
+  rowSettingsSectionFold,
+  localStorageState,
+  initSettingsSectionExpandedState,
+  setSettingsSectionExpanded,
+  toggleSettingsSectionExpanded,
+  readSettingsSectionExpanded,
+};
+`)();
+
+  api.initSettingsSectionExpandedState();
+  assert.equal(api.rowSettingsSectionFold.style.display, 'none');
+  assert.equal(api.btnToggleSettingsSection.textContent, '展开设置');
+  assert.equal(api.btnToggleSettingsSection.title, '展开插件设置');
+  assert.equal(api.btnToggleSettingsSection.attrs['aria-expanded'], 'false');
+  assert.equal(api.inputSettingsSectionExpanded.checked, false);
+  assert.equal(api.localStorageState.has('multipage-settings-section-expanded'), false);
+
+  api.toggleSettingsSectionExpanded();
+  assert.equal(api.rowSettingsSectionFold.style.display, '');
+  assert.equal(api.btnToggleSettingsSection.textContent, '收起设置');
+  assert.equal(api.btnToggleSettingsSection.title, '收起插件设置');
+  assert.equal(api.btnToggleSettingsSection.attrs['aria-expanded'], 'true');
+  assert.equal(api.inputSettingsSectionExpanded.checked, true);
+  assert.equal(api.localStorageState.get('multipage-settings-section-expanded'), '1');
+
+  api.setSettingsSectionExpanded(false);
+  assert.equal(api.rowSettingsSectionFold.style.display, 'none');
+  assert.equal(api.btnToggleSettingsSection.textContent, '展开设置');
+  assert.equal(api.inputSettingsSectionExpanded.checked, false);
+  assert.equal(api.localStorageState.has('multipage-settings-section-expanded'), false);
 });
 
 test('updatePhoneVerificationSettingsUI toggles HeroSMS rows from the sms switch', () => {

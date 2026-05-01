@@ -49,6 +49,7 @@ function extractFunction(name) {
 }
 
 const helperBundle = [
+  extractFunction('normalizeContributionUpdateNoticeText'),
   extractFunction('getContributionUpdatePromptLines'),
   extractFunction('getContributionUpdateHintMessage'),
 ].join('\n');
@@ -72,7 +73,7 @@ test('getContributionUpdateHintMessage numbers contribution updates when both co
 
   assert.equal(
     message,
-    '1. 公告 / 使用教程有更新了，可点上方“贡献/使用”查看。\n2. 有新的征求意见，请佬友共同参与选择。'
+    '1. 公告 / 使用教程有更新了。\n2. 有新的征求意见，请佬友共同参与选择。'
   );
 });
 
@@ -101,7 +102,7 @@ test('getContributionUpdateHintMessage uses managed auto run notice text when av
     ],
   });
 
-  assert.equal(message, '公告和使用教程更新了，可点上方“贡献/使用教程”查看。');
+  assert.equal(message, '公告和使用教程更新了。');
 });
 
 test('getContributionUpdateHintMessage suppresses managed auto run notice when it is disabled', () => {

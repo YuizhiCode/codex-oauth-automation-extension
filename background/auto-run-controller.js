@@ -405,7 +405,13 @@
             deps.chrome.runtime.sendMessage({ type: 'AUTO_RUN_RESET' }).catch(() => { });
             await sleepWithStop(500);
 
-            if (startStep === 1 && typeof prepareRegisteredAccountResumeForAutoRun === 'function') {
+            if (
+              startStep === 1
+              && totalRuns === 1
+              && targetRun === 1
+              && attemptRun === 1
+              && typeof prepareRegisteredAccountResumeForAutoRun === 'function'
+            ) {
               const registeredResume = await prepareRegisteredAccountResumeForAutoRun({
                 targetRun,
                 totalRuns,

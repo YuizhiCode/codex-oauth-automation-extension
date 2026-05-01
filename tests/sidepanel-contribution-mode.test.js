@@ -102,12 +102,12 @@ function createElement(initial = {}) {
   };
 }
 
-test('sidepanel html contains contribution mode runtime UI and loads the module before sidepanel bootstrap', () => {
+test('sidepanel html keeps contribution mode runtime UI without a header entry button and loads the module before sidepanel bootstrap', () => {
   const html = fs.readFileSync('sidepanel/sidepanel.html', 'utf8');
   const moduleIndex = html.indexOf('<script src="contribution-mode.js"></script>');
   const sidepanelIndex = html.indexOf('<script src="sidepanel.js"></script>');
 
-  assert.match(html, /id="btn-contribution-mode"/);
+  assert.doesNotMatch(html, /id="btn-contribution-mode"/);
   assert.match(html, /id="contribution-mode-panel"/);
   assert.match(html, /id="contribution-oauth-status"/);
   assert.match(html, /id="contribution-callback-status"/);
@@ -223,6 +223,7 @@ const inputAutoStepDelaySeconds = { value: '10' };
 const inputVerificationResendCount = { value: '6' };
 const DEFAULT_VERIFICATION_RESEND_COUNT = 4;
 const DEFAULT_PHONE_VERIFICATION_REPLACEMENT_LIMIT = 3;
+const DEFAULT_HERO_SMS_MIN_PRICE = '0.05';
 
 function getCloudflareDomainsFromState() { return { domains: ['example.com'], activeDomain: 'example.com' }; }
 function normalizeCloudflareDomainValue(value) { return String(value || '').trim(); }

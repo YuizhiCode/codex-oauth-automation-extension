@@ -540,6 +540,14 @@ return {
   assert.strictEqual(resumeSnapshot.currentState.email, 'registered@example.com');
   assert.strictEqual(resumeSnapshot.currentState.password, 'Secret123!');
 
+  await resumeApi.autoRunLoop(2, { autoRunSkipFailures: false, mode: 'restart' });
+  const multiRunResumeSnapshot = resumeApi.snapshot();
+  assert.deepStrictEqual(
+    multiRunResumeSnapshot.runStartSteps,
+    [6, 1, 1],
+    'multi-run auto should always start from registration and should not use registered account pool data'
+  );
+
   console.log('auto-run fresh attempt reset tests passed');
 })().catch((error) => {
   console.error(error);

@@ -33,6 +33,9 @@ const updateCardSummary = document.getElementById('update-card-summary');
 const updateReleaseList = document.getElementById('update-release-list');
 const btnOpenRelease = document.getElementById('btn-open-release');
 const settingsCard = document.getElementById('settings-card');
+const btnToggleSettingsSection = document.getElementById('btn-toggle-settings-section');
+const inputSettingsSectionExpanded = document.getElementById('input-settings-section-expanded');
+const rowSettingsSectionFold = document.getElementById('row-settings-section-fold');
 const contributionModePanel = document.getElementById('contribution-mode-panel');
 const contributionModeBadge = document.getElementById('contribution-mode-badge');
 const contributionModeText = document.getElementById('contribution-mode-text');
@@ -72,6 +75,10 @@ const autoScheduleMeta = document.getElementById('auto-schedule-meta');
 const btnAutoRunNow = document.getElementById('btn-auto-run-now');
 const btnAutoCancelSchedule = document.getElementById('btn-auto-cancel-schedule');
 const btnClearLog = document.getElementById('btn-clear-log');
+const btnOpenRegisteredAccountPool = document.getElementById('btn-open-registered-account-pool');
+const registeredAccountPoolSummary = document.getElementById('registered-account-pool-summary');
+const registeredAccountPoolOverlay = document.getElementById('registered-account-pool-overlay');
+const btnCloseRegisteredAccountPool = document.getElementById('btn-close-registered-account-pool');
 const registeredAccountPoolList = document.getElementById('registered-account-pool-list');
 const registeredAccountPoolMeta = document.getElementById('registered-account-pool-meta');
 const inputRegisteredAccountPoolSearch = document.getElementById('input-registered-account-pool-search');
@@ -80,7 +87,10 @@ const registeredAccountPoolSelectionSummary = document.getElementById('registere
 const btnRegisteredAccountPoolClearSearch = document.getElementById('btn-registered-account-pool-clear-search');
 const btnRegisteredAccountPoolClearSelection = document.getElementById('btn-registered-account-pool-clear-selection');
 const btnDeleteSelectedRegisteredAccounts = document.getElementById('btn-delete-selected-registered-accounts');
-const btnRegisteredAccountPoolLoadMore = document.getElementById('btn-registered-account-pool-load-more');
+const btnRegisteredAccountPoolPrev = document.getElementById('btn-registered-account-pool-prev');
+const registeredAccountPoolPageLabel = document.getElementById('registered-account-pool-page-label');
+const btnRegisteredAccountPoolNext = document.getElementById('btn-registered-account-pool-next');
+const selectRegisteredAccountPoolPageSize = document.getElementById('select-registered-account-pool-page-size');
 const configMenuShell = document.getElementById('config-menu-shell');
 const btnConfigMenu = document.getElementById('btn-config-menu');
 const configMenu = document.getElementById('config-menu');
@@ -369,9 +379,11 @@ let currentPlusModeEnabled = false;
 let heroSmsCountrySelectionOrder = [];
 let heroSmsCountryMenuSearchKeyword = '';
 const heroSmsCountrySearchTextById = new Map();
-const REGISTERED_ACCOUNT_POOL_PAGE_SIZE = 30;
+const REGISTERED_ACCOUNT_POOL_PAGE_SIZE_OPTIONS = [20, 40, 60];
+const DEFAULT_REGISTERED_ACCOUNT_POOL_PAGE_SIZE = 20;
 let registeredAccountPoolSearchKeyword = '';
-let registeredAccountPoolVisibleCount = REGISTERED_ACCOUNT_POOL_PAGE_SIZE;
+let registeredAccountPoolCurrentPage = 1;
+let registeredAccountPoolPageSize = DEFAULT_REGISTERED_ACCOUNT_POOL_PAGE_SIZE;
 let registeredAccountPoolSelectedEmails = new Set();
 let stepDefinitions = getStepDefinitionsForMode(false);
 let STEP_IDS = stepDefinitions.map((step) => Number(step.id)).filter(Number.isFinite);
@@ -466,6 +478,7 @@ const AUTO_SKIP_FAILURES_PROMPT_DISMISSED_STORAGE_KEY = 'multipage-auto-skip-fai
 const AUTO_RUN_FALLBACK_RISK_PROMPT_DISMISSED_STORAGE_KEY = 'multipage-auto-run-fallback-risk-prompt-dismissed';
 const AUTO_RUN_PLUS_RISK_PROMPT_DISMISSED_STORAGE_KEY = 'multipage-auto-run-plus-risk-prompt-dismissed';
 const PLUS_CONTRIBUTION_PROMPT_LEDGER_STORAGE_KEY = 'multipage-plus-contribution-prompt-ledger';
+const SETTINGS_SECTION_EXPANDED_STORAGE_KEY = 'multipage-settings-section-expanded';
 const PHONE_VERIFICATION_SECTION_EXPANDED_STORAGE_KEY = 'multipage-phone-verification-section-expanded';
 
 function getStepDefinitionsForMode(plusModeEnabled = false) {
@@ -779,7 +792,58 @@ let configActionInFlight = false;
 let currentReleaseSnapshot = null;
 let currentContributionContentSnapshot = null;
 let contributionContentSnapshotRequestInFlight = null;
+let settingsSectionExpanded = false;
 let phoneVerificationSectionExpanded = true;
+
+function readSettingsSectionExpanded() {
+  try {
+    return globalThis.localStorage?.getItem(SETTINGS_SECTION_EXPANDED_STORAGE_KEY) === '1';
+  } catch (err) {
+    return false;
+  }
+}
+
+function persistSettingsSectionExpanded(expanded) {
+  try {
+    if (expanded) {
+      globalThis.localStorage?.setItem(SETTINGS_SECTION_EXPANDED_STORAGE_KEY, '1');
+    } else {
+      globalThis.localStorage?.removeItem(SETTINGS_SECTION_EXPANDED_STORAGE_KEY);
+    }
+  } catch (err) {
+    // Ignore storage errors; the in-memory collapsed state is still enough for this session.
+  }
+}
+
+function updateSettingsSectionUI() {
+  const showSettings = Boolean(settingsSectionExpanded);
+  if (btnToggleSettingsSection) {
+    btnToggleSettingsSection.textContent = showSettings ? '收起设置' : '展开设置';
+    btnToggleSettingsSection.title = showSettings ? '收起插件设置' : '展开插件设置';
+    btnToggleSettingsSection.setAttribute('aria-expanded', String(showSettings));
+  }
+  if (inputSettingsSectionExpanded) {
+    inputSettingsSectionExpanded.checked = showSettings;
+  }
+  if (rowSettingsSectionFold) {
+    rowSettingsSectionFold.style.display = showSettings ? '' : 'none';
+  }
+}
+
+function setSettingsSectionExpanded(expanded) {
+  settingsSectionExpanded = Boolean(expanded);
+  persistSettingsSectionExpanded(settingsSectionExpanded);
+  updateSettingsSectionUI();
+}
+
+function toggleSettingsSectionExpanded() {
+  setSettingsSectionExpanded(!settingsSectionExpanded);
+}
+
+function initSettingsSectionExpandedState() {
+  settingsSectionExpanded = readSettingsSectionExpanded();
+  updateSettingsSectionUI();
+}
 
 function readPhoneVerificationSectionExpanded() {
   try {
@@ -1230,16 +1294,7 @@ function setNewUserGuidePromptDismissed(dismissed) {
 }
 
 function shouldPromptNewUserGuide() {
-  if (isNewUserGuidePromptDismissed()) {
-    return false;
-  }
-  if (!btnContributionMode || btnContributionMode.disabled) {
-    return false;
-  }
-  if (latestState?.contributionMode) {
-    return false;
-  }
-  return true;
+  return false;
 }
 
 function getContributionPortalUrl() {
@@ -1505,7 +1560,7 @@ async function openAutoSkipFailuresConfirmModal() {
 async function openAutoRunFallbackRiskConfirmModal(totalRuns) {
   const result = await openConfirmModalWithOption({
     title: '自动运行风险提醒',
-    message: `当前轮数已经不适合单节点情况，请确保已经配置并打开节点轮询功能（若没有配置，请点击贡献/使用按钮，根据网页中使用教程进行配置），避免连续使用一个节点注册，导致出现手机号验证。`,
+    message: `当前轮数已经不适合单节点情况，请确保已经配置并打开节点轮询功能，并按使用教程完成配置，避免连续使用一个节点注册，导致出现手机号验证。`,
     confirmLabel: '继续',
   });
 
@@ -4579,6 +4634,21 @@ function getContributionUpdateHintMessage(snapshot = currentContributionContentS
   return lines.map((line, index) => `${index + 1}. ${line}`).join('\n');
 }
 
+function normalizeContributionUpdateNoticeText(text) {
+  const normalized = String(text || '').trim();
+  if (!normalized) {
+    return '';
+  }
+
+  const legacyReplacements = new Map([
+    ['公告和使用教程更新了，可点上方“贡献/使用教程”查看。', '公告和使用教程更新了。'],
+    ['公告和使用教程更新了，可点上方“贡献/使用”查看。', '公告和使用教程更新了。'],
+    ['公告 / 使用教程有更新了，可点上方“贡献/使用教程”查看。', '公告 / 使用教程有更新了。'],
+    ['公告 / 使用教程有更新了，可点上方“贡献/使用”查看。', '公告 / 使用教程有更新了。'],
+  ]);
+  return legacyReplacements.get(normalized) || normalized;
+}
+
 function getContributionUpdatePromptLines(snapshot = currentContributionContentSnapshot) {
   if (!snapshot?.promptVersion) {
     return [];
@@ -4590,7 +4660,7 @@ function getContributionUpdatePromptLines(snapshot = currentContributionContentS
     && String(item.slug || '').trim().toLowerCase() === 'auto_run_notice'
   );
   if (autoRunNoticeItem) {
-    const noticeText = String(autoRunNoticeItem.text || '').trim();
+    const noticeText = normalizeContributionUpdateNoticeText(autoRunNoticeItem.text);
     return autoRunNoticeItem.isVisible && noticeText ? [noticeText] : [];
   }
 
@@ -4607,7 +4677,7 @@ function getContributionUpdatePromptLines(snapshot = currentContributionContentS
 
   const lines = [];
   if (hasAnnouncementOrTutorial) {
-    lines.push('公告 / 使用教程有更新了，可点上方“贡献/使用”查看。');
+    lines.push('公告 / 使用教程有更新了。');
   }
   if (hasQuestionnaire) {
     lines.push('有新的征求意见，请佬友共同参与选择。');
@@ -5042,6 +5112,13 @@ function isRegisteredAccountPoolInteractionLocked() {
   return anyRunning || isAutoRunLockedPhase() || isAutoRunPausedPhase() || isAutoRunScheduledPhase();
 }
 
+function normalizeRegisteredAccountPoolPageSize(value) {
+  const normalized = Math.floor(Number(value) || 0);
+  return REGISTERED_ACCOUNT_POOL_PAGE_SIZE_OPTIONS.includes(normalized)
+    ? normalized
+    : DEFAULT_REGISTERED_ACCOUNT_POOL_PAGE_SIZE;
+}
+
 function getRegisteredAccountPoolDisplayState(state = latestState) {
   const accounts = Array.isArray(state?.accounts) ? state.accounts.slice() : [];
   const sortedAccounts = accounts.sort((left, right) => {
@@ -5057,21 +5134,59 @@ function getRegisteredAccountPoolDisplayState(state = latestState) {
       return email.includes(keyword) || provider.includes(keyword);
     })
     : sortedAccounts;
-  const visibleCount = Math.max(REGISTERED_ACCOUNT_POOL_PAGE_SIZE, Math.floor(Number(registeredAccountPoolVisibleCount) || REGISTERED_ACCOUNT_POOL_PAGE_SIZE));
-  const visibleAccounts = filteredAccounts.slice(0, visibleCount);
-  const hasMore = filteredAccounts.length > visibleAccounts.length;
+  const pageSize = normalizeRegisteredAccountPoolPageSize(registeredAccountPoolPageSize);
+  const totalPages = filteredAccounts.length > 0
+    ? Math.ceil(filteredAccounts.length / pageSize)
+    : 0;
+  const currentPage = totalPages > 0
+    ? Math.min(Math.max(1, Math.floor(Number(registeredAccountPoolCurrentPage) || 1)), totalPages)
+    : 1;
+  const startIndex = (currentPage - 1) * pageSize;
+  const visibleAccounts = filteredAccounts.slice(startIndex, startIndex + pageSize);
   return {
     totalCount: sortedAccounts.length,
     filteredCount: filteredAccounts.length,
-    visibleCount: visibleAccounts.length,
-    hasMore,
+    currentPage,
+    pageSize,
+    totalPages,
     visibleAccounts,
     filteredAccounts,
   };
 }
 
+function renderRegisteredAccountPoolSummary(state = latestState) {
+  if (!registeredAccountPoolSummary || !btnOpenRegisteredAccountPool) {
+    return;
+  }
+  const { totalCount, filteredCount } = getRegisteredAccountPoolDisplayState(state);
+  if (!totalCount) {
+    registeredAccountPoolSummary.textContent = '暂无待复用账号';
+    btnOpenRegisteredAccountPool.textContent = '管理账号';
+    return;
+  }
+  if (registeredAccountPoolSearchKeyword && filteredCount !== totalCount) {
+    registeredAccountPoolSummary.textContent = `共 ${totalCount} 条，当前筛选命中 ${filteredCount} 条`;
+  } else {
+    registeredAccountPoolSummary.textContent = `共 ${totalCount} 条待复用账号`;
+  }
+  btnOpenRegisteredAccountPool.textContent = `管理账号（${totalCount}）`;
+}
+
+function openRegisteredAccountPoolPanel() {
+  if (registeredAccountPoolOverlay) {
+    registeredAccountPoolOverlay.hidden = false;
+  }
+  renderRegisteredAccountPool(latestState);
+}
+
+function closeRegisteredAccountPoolPanel() {
+  if (registeredAccountPoolOverlay) {
+    registeredAccountPoolOverlay.hidden = true;
+  }
+}
+
 function syncRegisteredAccountPoolSelectionState(state = latestState) {
-  const { visibleAccounts } = getRegisteredAccountPoolDisplayState(state);
+  const { visibleAccounts, currentPage, pageSize, totalPages } = getRegisteredAccountPoolDisplayState(state);
   const allAccounts = Array.isArray(state?.accounts) ? state.accounts : [];
   const locked = isRegisteredAccountPoolInteractionLocked();
   const allowedEmails = new Set(allAccounts.map((account) => String(account?.email || '').trim().toLowerCase()).filter(Boolean));
@@ -5106,34 +5221,44 @@ function syncRegisteredAccountPoolSelectionState(state = latestState) {
   if (inputRegisteredAccountPoolSearch) {
     inputRegisteredAccountPoolSearch.disabled = locked;
   }
-  if (btnRegisteredAccountPoolLoadMore) {
-    btnRegisteredAccountPoolLoadMore.disabled = locked;
+  if (selectRegisteredAccountPoolPageSize) {
+    selectRegisteredAccountPoolPageSize.value = String(pageSize);
+    selectRegisteredAccountPoolPageSize.disabled = locked;
+  }
+  if (registeredAccountPoolPageLabel) {
+    registeredAccountPoolPageLabel.textContent = totalPages > 0 ? `${currentPage} / ${totalPages}` : '0 / 0';
+  }
+  if (btnRegisteredAccountPoolPrev) {
+    btnRegisteredAccountPoolPrev.disabled = locked || totalPages <= 1 || currentPage <= 1;
+  }
+  if (btnRegisteredAccountPoolNext) {
+    btnRegisteredAccountPoolNext.disabled = locked || totalPages <= 1 || currentPage >= totalPages;
   }
 }
 
 function renderRegisteredAccountPool(state = latestState) {
+  renderRegisteredAccountPoolSummary(state);
   if (!registeredAccountPoolList) {
     return;
   }
   const {
     totalCount,
     filteredCount,
-    visibleCount,
-    hasMore,
+    currentPage,
+    pageSize,
     visibleAccounts,
   } = getRegisteredAccountPoolDisplayState(state);
+  registeredAccountPoolCurrentPage = currentPage;
+  registeredAccountPoolPageSize = pageSize;
   if (registeredAccountPoolMeta) {
     registeredAccountPoolMeta.textContent = filteredCount === totalCount
-      ? `共 ${totalCount} 条，当前显示 ${visibleCount} 条`
-      : `共 ${totalCount} 条，匹配 ${filteredCount} 条，当前显示 ${visibleCount} 条`;
+      ? `共 ${totalCount} 条`
+      : `共 ${totalCount} 条，匹配 ${filteredCount} 条`;
   }
   if (!visibleAccounts.length) {
     registeredAccountPoolList.innerHTML = totalCount > 0
       ? '<div class="registered-account-pool-empty">没有匹配的复用账号</div>'
       : '<div class="registered-account-pool-empty">暂无待复用账号</div>';
-    if (btnRegisteredAccountPoolLoadMore) {
-      btnRegisteredAccountPoolLoadMore.hidden = true;
-    }
     syncRegisteredAccountPoolSelectionState(state);
     return;
   }
@@ -5142,19 +5267,21 @@ function renderRegisteredAccountPool(state = latestState) {
     const normalizedEmail = email.toLowerCase();
     const providerLabel = getRegisteredAccountMailProviderLabel(account);
     const updatedAt = formatRegisteredAccountPoolTime(account?.updatedAt || account?.createdAt);
-    const timeText = updatedAt ? `<span>${escapeHtml(updatedAt)}</span>` : '';
+    const timeText = updatedAt || '--';
     const checked = registeredAccountPoolSelectedEmails.has(normalizedEmail) ? 'checked' : '';
     const lockedAttr = isRegisteredAccountPoolInteractionLocked() ? 'disabled' : '';
     return `
       <div class="registered-account-pool-item">
-        <div class="registered-account-pool-select-row">
+        <div class="registered-account-pool-cell registered-account-pool-col-select">
           <label class="option-toggle registered-account-pool-option">
             <input type="checkbox" data-registered-account-select="${escapeHtml(email)}" ${checked} ${lockedAttr} />
-            <span>选择</span>
+            <span class="sr-only">选择</span>
           </label>
         </div>
-        <div class="registered-account-pool-head">
-          <div class="registered-account-pool-email">${escapeHtml(email)}</div>
+        <div class="registered-account-pool-cell registered-account-pool-col-email registered-account-pool-email" title="${escapeHtml(email)}">${escapeHtml(email)}</div>
+        <div class="registered-account-pool-cell registered-account-pool-col-provider" title="${escapeHtml(providerLabel)}">${escapeHtml(providerLabel)}</div>
+        <div class="registered-account-pool-cell registered-account-pool-col-time mono" title="${escapeHtml(timeText)}">${escapeHtml(timeText)}</div>
+        <div class="registered-account-pool-cell registered-account-pool-col-actions">
           <button
             type="button"
             class="btn btn-ghost btn-xs registered-account-pool-delete"
@@ -5162,19 +5289,9 @@ function renderRegisteredAccountPool(state = latestState) {
             ${lockedAttr}
           >删除</button>
         </div>
-        <div class="registered-account-pool-meta">
-          <span>${escapeHtml(providerLabel)}</span>
-          ${timeText}
-        </div>
       </div>
     `;
   }).join('');
-  if (btnRegisteredAccountPoolLoadMore) {
-    btnRegisteredAccountPoolLoadMore.hidden = !hasMore;
-    btnRegisteredAccountPoolLoadMore.textContent = hasMore
-      ? `加载更多（剩余 ${Math.max(0, filteredCount - visibleCount)} 条）`
-      : '已全部加载';
-  }
   syncRegisteredAccountPoolSelectionState(state);
 }
 
@@ -6731,6 +6848,14 @@ btnToggleIpProxySection?.addEventListener('click', () => {
   }
 });
 
+btnToggleSettingsSection?.addEventListener('click', () => {
+  toggleSettingsSectionExpanded();
+});
+
+inputSettingsSectionExpanded?.addEventListener('change', () => {
+  setSettingsSectionExpanded(Boolean(inputSettingsSectionExpanded.checked));
+});
+
 btnTogglePhoneVerificationSection?.addEventListener('click', () => {
   togglePhoneVerificationSectionExpanded();
 });
@@ -8094,7 +8219,7 @@ inputRegisteredAccountPoolSearch?.addEventListener('input', () => {
     return;
   }
   registeredAccountPoolSearchKeyword = String(inputRegisteredAccountPoolSearch.value || '').trim();
-  registeredAccountPoolVisibleCount = REGISTERED_ACCOUNT_POOL_PAGE_SIZE;
+  registeredAccountPoolCurrentPage = 1;
   renderRegisteredAccountPool(latestState);
 });
 
@@ -8129,7 +8254,7 @@ btnRegisteredAccountPoolClearSearch?.addEventListener('click', () => {
     return;
   }
   registeredAccountPoolSearchKeyword = '';
-  registeredAccountPoolVisibleCount = REGISTERED_ACCOUNT_POOL_PAGE_SIZE;
+  registeredAccountPoolCurrentPage = 1;
   if (inputRegisteredAccountPoolSearch) {
     inputRegisteredAccountPoolSearch.value = '';
   }
@@ -8141,12 +8266,35 @@ btnRegisteredAccountPoolClearSelection?.addEventListener('click', () => {
   renderRegisteredAccountPool(latestState);
 });
 
-btnRegisteredAccountPoolLoadMore?.addEventListener('click', () => {
+selectRegisteredAccountPoolPageSize?.addEventListener('change', () => {
   if (isRegisteredAccountPoolInteractionLocked()) {
-    showToast('流程运行中，暂时不能展开更多复用号池数据。', 'warn', 1800);
+    selectRegisteredAccountPoolPageSize.value = String(registeredAccountPoolPageSize);
+    showToast('流程运行中，暂时不能修改复用号池每页条数。', 'warn', 1800);
     return;
   }
-  registeredAccountPoolVisibleCount += REGISTERED_ACCOUNT_POOL_PAGE_SIZE;
+  registeredAccountPoolPageSize = normalizeRegisteredAccountPoolPageSize(selectRegisteredAccountPoolPageSize.value);
+  registeredAccountPoolCurrentPage = 1;
+  renderRegisteredAccountPool(latestState);
+});
+
+btnRegisteredAccountPoolPrev?.addEventListener('click', () => {
+  if (isRegisteredAccountPoolInteractionLocked()) {
+    showToast('流程运行中，暂时不能切换复用号池页码。', 'warn', 1800);
+    return;
+  }
+  if (registeredAccountPoolCurrentPage <= 1) {
+    return;
+  }
+  registeredAccountPoolCurrentPage -= 1;
+  renderRegisteredAccountPool(latestState);
+});
+
+btnRegisteredAccountPoolNext?.addEventListener('click', () => {
+  if (isRegisteredAccountPoolInteractionLocked()) {
+    showToast('流程运行中，暂时不能切换复用号池页码。', 'warn', 1800);
+    return;
+  }
+  registeredAccountPoolCurrentPage += 1;
   renderRegisteredAccountPool(latestState);
 });
 
@@ -8840,6 +8988,9 @@ document.addEventListener('keydown', (event) => {
   if (configMenuOpen) {
     closeConfigMenu();
   }
+  if (registeredAccountPoolOverlay && !registeredAccountPoolOverlay.hidden) {
+    closeRegisteredAccountPoolPanel();
+  }
   if (btnHeroSmsCountryMenu?.getAttribute('aria-expanded') === 'true') {
     setHeroSmsCountryMenuOpen(false);
   }
@@ -8852,6 +9003,20 @@ window.addEventListener('resize', () => {
 document.addEventListener('scroll', () => {
   positionContributionUpdateHint();
 }, true);
+
+btnOpenRegisteredAccountPool?.addEventListener('click', () => {
+  openRegisteredAccountPoolPanel();
+});
+
+btnCloseRegisteredAccountPool?.addEventListener('click', () => {
+  closeRegisteredAccountPoolPanel();
+});
+
+registeredAccountPoolOverlay?.addEventListener('click', (event) => {
+  if (event.target === registeredAccountPoolOverlay) {
+    closeRegisteredAccountPoolPanel();
+  }
+});
 
 registeredAccountPoolList?.addEventListener('click', (event) => {
   const target = event.target instanceof Element ? event.target.closest('[data-registered-account-delete]') : null;
@@ -8902,6 +9067,7 @@ bindPasswordVisibilityToggles();
 initTheme();
 initHotmailListExpandedState();
 initMail2925ListExpandedState();
+initSettingsSectionExpandedState();
 if (typeof initIpProxySectionExpandedState === 'function') {
   initIpProxySectionExpandedState();
 }
