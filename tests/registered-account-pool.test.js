@@ -235,6 +235,27 @@ test('registered account pool stores the mailbox provider snapshot with a 2925 a
   assert.equal(currentState.accounts[0].mailConfig.mailProvider, '2925');
 });
 
+test('registered account pool keeps an account even when password is missing', async () => {
+  const api = createApi({
+    email: 'registered@2925.com',
+    password: '',
+    customPassword: '',
+    mailProvider: '2925',
+    emailGenerator: 'custom',
+    mail2925Mode: 'receive',
+  });
+
+  const record = await api.saveRegisteredAccountAfterProfileSuccess();
+  const { currentState, logs } = api.snapshot();
+
+  assert.equal(record.email, 'registered@2925.com');
+  assert.equal(record.password, '');
+  assert.equal(currentState.accounts.length, 1);
+  assert.equal(currentState.accounts[0].email, 'registered@2925.com');
+  assert.equal(currentState.accounts[0].password, '');
+  assert.equal(logs.some(({ message }) => /无法写入已注册账号池/.test(message)), false);
+});
+
 test('registered account resume restores the saved mailbox provider before continuing', async () => {
   const api = createApi({
     mailProvider: '163',
@@ -268,6 +289,29 @@ test('registered account resume restores the saved mailbox provider before conti
   assert.equal(currentState.stepStatuses[6], 'pending');
   assert.equal(broadcasts.at(-1).mailProvider, 'hotmail-api');
   assert.match(logs.at(-1).message, /Hotmail/);
+});
+
+test('registered account resume keeps an empty password when restoring from the reuse pool', async () => {
+  const api = createApi({
+    accounts: [{
+      email: 'registered@example.com',
+      password: '',
+      createdAt: 1,
+      mailConfig: {
+        mailProvider: '163',
+      },
+    }],
+    stepStatuses: Object.fromEntries(Array.from({ length: 10 }, (_, index) => [String(index + 1), 'pending'])),
+  });
+
+  const result = await api.prepareRegisteredAccountResumeForAutoRun();
+  const { currentState } = api.snapshot();
+
+  assert.equal(result.startStep, 6);
+  assert.equal(currentState.email, 'registered@example.com');
+  assert.equal(currentState.password, '');
+  assert.equal(currentState.accounts.length, 1);
+  assert.equal(currentState.accounts[0].password, '');
 });
 
 test('settings export and import include the registered account reuse pool', async () => {
@@ -304,6 +348,37 @@ test('settings export and import include the registered account reuse pool', asy
   assert.equal(currentState.accounts[0].email, 'reuse@2925.com');
   assert.equal(currentState.accounts[0].mailConfig.currentMail2925AccountId, 'mail2925-account-1');
   assert.equal(broadcasts.at(-1).accounts[0].mailConfig.mailProvider, '2925');
+});
+
+test('settings export and import keep reuse-pool accounts without passwords', async () => {
+  const api = createApi({
+    accounts: [{
+      email: 'reuse@example.com',
+      password: '',
+      createdAt: 1,
+      updatedAt: 2,
+      mailConfig: {
+        mailProvider: '163',
+      },
+    }],
+  });
+
+  const exported = await api.exportSettingsBundle();
+  const exportedBundle = JSON.parse(exported.fileContent);
+
+  assert.equal(exportedBundle.registeredAccounts.length, 1);
+  assert.equal(exportedBundle.registeredAccounts[0].email, 'reuse@example.com');
+  assert.equal(exportedBundle.registeredAccounts[0].password, '');
+
+  const importedApi = createApi({
+    accounts: [],
+  });
+  await importedApi.importSettingsBundle(exportedBundle);
+  const { currentState } = importedApi.snapshot();
+
+  assert.equal(currentState.accounts.length, 1);
+  assert.equal(currentState.accounts[0].email, 'reuse@example.com');
+  assert.equal(currentState.accounts[0].password, '');
 });
 
 test('registered account pool can delete one reusable account by email', async () => {

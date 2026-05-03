@@ -1907,10 +1907,10 @@ function getRegisteredAccountMailConfigRestorePayload(account = {}) {
 
 function normalizeRegisteredAccountRecord(account = {}) {
   const email = String(account?.email || '').trim();
-  const password = String(account?.password || '').trim();
-  if (!email || !password) {
+  if (!email) {
     return null;
   }
+  const password = String(account?.password || '').trim();
   const createdAt = Number(account?.createdAt) || Date.now();
   const updatedAt = Number(account?.updatedAt) || createdAt;
   const status = String(account?.status || REGISTERED_ACCOUNT_RESUME_STATUS).trim() || REGISTERED_ACCOUNT_RESUME_STATUS;
@@ -1948,8 +1948,8 @@ async function saveRegisteredAccountAfterProfileSuccess(stateOverride = null) {
   const state = stateOverride || await getState();
   const email = String(state?.email || '').trim();
   const password = String(state?.password || state?.customPassword || '').trim();
-  if (!email || !password) {
-    await addLog('步骤 5：当前邮箱或密码为空，无法写入已注册账号池。', 'warn');
+  if (!email) {
+    await addLog('步骤 5：当前邮箱为空，无法写入已注册账号池。', 'warn');
     return null;
   }
 
