@@ -313,12 +313,25 @@ const rowPhoneVerificationEnabled = document.getElementById('row-phone-verificat
 const btnTogglePhoneVerificationSection = document.getElementById('btn-toggle-phone-verification-section');
 const rowPhoneVerificationFold = document.getElementById('row-phone-verification-fold');
 const inputPhoneVerificationEnabled = document.getElementById('input-phone-verification-enabled');
+const rowPhoneSmsProvider = document.getElementById('row-phone-sms-provider');
+const selectPhoneSmsProvider = document.getElementById('select-phone-sms-provider');
+const rowPhoneSmsProviderOrder = document.getElementById('row-phone-sms-provider-order');
+const rowPhoneSmsProviderOrderActions = document.getElementById('row-phone-sms-provider-order-actions');
 const rowHeroSmsPlatform = document.getElementById('row-hero-sms-platform');
 const rowHeroSmsCountry = document.getElementById('row-hero-sms-country');
 const rowHeroSmsCountryFallback = document.getElementById('row-hero-sms-country-fallback');
 const rowHeroSmsAcquirePriority = document.getElementById('row-hero-sms-acquire-priority');
 const rowHeroSmsApiKey = document.getElementById('row-hero-sms-api-key');
 const rowHeroSmsMaxPrice = document.getElementById('row-hero-sms-max-price');
+const rowFiveSimApiKey = document.getElementById('row-five-sim-api-key');
+const rowFiveSimCountry = document.getElementById('row-five-sim-country');
+const rowFiveSimCountryFallback = document.getElementById('row-five-sim-country-fallback');
+const rowFiveSimOperator = document.getElementById('row-five-sim-operator');
+const rowFiveSimProduct = document.getElementById('row-five-sim-product');
+const rowNexSmsApiKey = document.getElementById('row-nex-sms-api-key');
+const rowNexSmsCountry = document.getElementById('row-nex-sms-country');
+const rowNexSmsCountryFallback = document.getElementById('row-nex-sms-country-fallback');
+const rowNexSmsServiceCode = document.getElementById('row-nex-sms-service-code');
 const rowHeroSmsRuntimePair = document.getElementById('row-hero-sms-runtime-pair');
 const rowHeroSmsCurrentNumber = document.getElementById('row-hero-sms-current-number');
 const rowHeroSmsPriceTiers = document.getElementById('row-hero-sms-price-tiers');
@@ -334,6 +347,11 @@ const inputHeroSmsApiKey = document.getElementById('input-hero-sms-api-key');
 const btnToggleHeroSmsApiKey = document.getElementById('btn-toggle-hero-sms-api-key');
 const inputHeroSmsMinPrice = document.getElementById('input-hero-sms-min-price');
 const inputHeroSmsMaxPrice = document.getElementById('input-hero-sms-max-price');
+const inputFiveSimApiKey = document.getElementById('input-five-sim-api-key');
+const inputFiveSimOperator = document.getElementById('input-five-sim-operator');
+const inputFiveSimProduct = document.getElementById('input-five-sim-product');
+const inputNexSmsApiKey = document.getElementById('input-nex-sms-api-key');
+const inputNexSmsServiceCode = document.getElementById('input-nex-sms-service-code');
 const inputPhoneReplacementLimit = document.getElementById('input-phone-replacement-limit');
 const inputPhoneCodeWaitSeconds = document.getElementById('input-phone-code-wait-seconds');
 const inputPhoneCodeTimeoutWindows = document.getElementById('input-phone-code-timeout-windows');
@@ -341,12 +359,19 @@ const inputPhoneCodePollIntervalSeconds = document.getElementById('input-phone-c
 const inputPhoneCodePollMaxRounds = document.getElementById('input-phone-code-poll-max-rounds');
 const inputHeroSmsReuseEnabled = document.getElementById('input-hero-sms-reuse-enabled');
 const selectHeroSmsCountry = document.getElementById('select-hero-sms-country');
+const selectFiveSimCountry = document.getElementById('select-five-sim-country');
+const selectNexSmsCountry = document.getElementById('select-nex-sms-country');
 const selectHeroSmsCountryFallback = document.getElementById('select-hero-sms-country-fallback');
 const selectHeroSmsAcquirePriority = document.getElementById('select-hero-sms-acquire-priority');
+const selectPhoneSmsProviderOrder = document.getElementById('select-phone-sms-provider-order');
+const phoneSmsProviderOrderMenuShell = document.getElementById('phone-sms-provider-order-menu-shell');
+const btnPhoneSmsProviderOrderMenu = document.getElementById('btn-phone-sms-provider-order-menu');
+const phoneSmsProviderOrderMenu = document.getElementById('phone-sms-provider-order-menu');
 const heroSmsCountryMenuShell = document.getElementById('hero-sms-country-menu-shell');
 const btnHeroSmsCountryMenu = document.getElementById('btn-hero-sms-country-menu');
 const heroSmsCountryMenu = document.getElementById('hero-sms-country-menu');
 const heroSmsCountrySelected = document.getElementById('hero-sms-country-selected');
+const btnPhoneSmsProviderOrderReset = document.getElementById('btn-phone-sms-provider-order-reset');
 const btnHeroSmsCountryClear = document.getElementById('btn-hero-sms-country-clear');
 const btnHeroSmsPricePreview = document.getElementById('btn-hero-sms-price-preview');
 const displayHeroSmsPlatform = document.getElementById('display-hero-sms-platform');
@@ -354,6 +379,9 @@ const displayHeroSmsCurrentNumber = document.getElementById('display-hero-sms-cu
 const displayHeroSmsPriceTiers = document.getElementById('display-hero-sms-price-tiers');
 const displayHeroSmsCurrentCode = document.getElementById('display-hero-sms-current-code');
 const displayHeroSmsCountryFallbackOrder = document.getElementById('display-hero-sms-country-fallback-order');
+const displayFiveSimCountryFallbackOrder = document.getElementById('display-five-sim-country-fallback-order');
+const displayNexSmsCountryFallbackOrder = document.getElementById('display-nex-sms-country-fallback-order');
+const displayPhoneSmsProviderOrder = document.getElementById('display-phone-sms-provider-order');
 const rowAccountRunHistoryHelperBaseUrl = document.getElementById('row-account-run-history-helper-base-url');
 const inputAccountRunHistoryHelperBaseUrl = document.getElementById('input-account-run-history-helper-base-url');
 const autoStartModal = document.getElementById('auto-start-modal');
@@ -379,6 +407,9 @@ const autoHintText = document.querySelector('.auto-hint');
 const stepsList = document.querySelector('.steps-list');
 let currentPlusModeEnabled = false;
 let heroSmsCountrySelectionOrder = [];
+let phoneSmsProviderOrderSelection = [];
+let fiveSimCountrySelectionOrder = [];
+let nexSmsCountrySelectionOrder = [];
 let heroSmsCountryMenuSearchKeyword = '';
 const heroSmsCountrySearchTextById = new Map();
 const REGISTERED_ACCOUNT_POOL_PAGE_SIZE_OPTIONS = [20, 40, 60];
@@ -533,6 +564,20 @@ const CONTRIBUTION_UPLOAD_URL = 'https://apikey.qzz.io/';
 const DEFAULT_PHONE_VERIFICATION_ENABLED = false;
 const DEFAULT_HERO_SMS_COUNTRY_ID = 52;
 const DEFAULT_HERO_SMS_COUNTRY_LABEL = 'Thailand';
+const PHONE_SMS_PROVIDER_HERO = 'hero-sms';
+const PHONE_SMS_PROVIDER_FIVE_SIM = '5sim';
+const PHONE_SMS_PROVIDER_NEXSMS = 'nexsms';
+const DEFAULT_PHONE_SMS_PROVIDER = PHONE_SMS_PROVIDER_HERO;
+const DEFAULT_PHONE_SMS_PROVIDER_ORDER = Object.freeze([
+  PHONE_SMS_PROVIDER_HERO,
+  PHONE_SMS_PROVIDER_FIVE_SIM,
+  PHONE_SMS_PROVIDER_NEXSMS,
+]);
+const DEFAULT_FIVE_SIM_COUNTRY_ORDER = Object.freeze(['thailand']);
+const DEFAULT_FIVE_SIM_OPERATOR = 'any';
+const DEFAULT_FIVE_SIM_PRODUCT = 'openai';
+const DEFAULT_NEX_SMS_COUNTRY_ORDER = Object.freeze([1]);
+const DEFAULT_NEX_SMS_SERVICE_CODE = 'ot';
 const DEFAULT_IP_PROXY_SERVICE = '711proxy';
 const SUPPORTED_IP_PROXY_SERVICES = ['711proxy', 'lumiproxy', 'iproyal', 'omegaproxy'];
 const IP_PROXY_ENABLED_SERVICES = ['711proxy'];
@@ -2534,6 +2579,75 @@ function collectSettingsPayload() {
     ? syncHeroSmsFallbackSelectionOrderFromSelect()
       .filter((country) => Number(country.id) !== Number(heroSmsCountry.id))
     : [];
+  const normalizePhoneSmsProviderSafe = typeof normalizePhoneSmsProviderValue === 'function'
+    ? normalizePhoneSmsProviderValue
+    : ((value = '') => {
+      const normalized = String(value || '').trim().toLowerCase();
+      if (normalized === '5sim') return '5sim';
+      if (normalized === 'nexsms') return 'nexsms';
+      return 'hero-sms';
+    });
+  const normalizePhoneSmsProviderOrderSafe = typeof normalizePhoneSmsProviderOrderValue === 'function'
+    ? normalizePhoneSmsProviderOrderValue
+    : ((value = [], fallbackOrder = []) => {
+      const source = Array.isArray(value) ? value : [];
+      if (source.length) {
+        return source.map((entry) => normalizePhoneSmsProviderSafe(entry)).slice(0, 3);
+      }
+      return Array.isArray(fallbackOrder)
+        ? fallbackOrder.map((entry) => normalizePhoneSmsProviderSafe(entry)).slice(0, 3)
+        : [];
+    });
+  const normalizeFiveSimCountryOrderSafe = typeof normalizeFiveSimCountryOrderValue === 'function'
+    ? normalizeFiveSimCountryOrderValue
+    : ((value = []) => Array.isArray(value)
+      ? value.map((entry) => String(entry || '').trim().toLowerCase()).filter(Boolean).slice(0, 10)
+      : []);
+  const normalizeFiveSimOperatorSafe = typeof normalizeFiveSimOperatorValue === 'function'
+    ? normalizeFiveSimOperatorValue
+    : ((value = '') => String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '') || 'any');
+  const normalizeFiveSimProductSafe = typeof normalizeFiveSimProductValue === 'function'
+    ? normalizeFiveSimProductValue
+    : ((value = '') => String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '') || 'openai');
+  const normalizeNexSmsCountryOrderSafe = typeof normalizeNexSmsCountryOrderValue === 'function'
+    ? normalizeNexSmsCountryOrderValue
+    : ((value = []) => Array.isArray(value)
+      ? value
+        .map((entry) => Math.floor(Number(entry)))
+        .filter((entry) => Number.isFinite(entry) && entry >= 0)
+        .slice(0, 10)
+      : []);
+  const normalizeNexSmsServiceCodeSafe = typeof normalizeNexSmsServiceCodeValue === 'function'
+    ? normalizeNexSmsServiceCodeValue
+    : ((value = '') => String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '') || 'ot');
+  const defaultPhoneSmsProviderSafe = typeof DEFAULT_PHONE_SMS_PROVIDER !== 'undefined'
+    ? DEFAULT_PHONE_SMS_PROVIDER
+    : 'hero-sms';
+  const defaultFiveSimCountryOrderSafe = typeof DEFAULT_FIVE_SIM_COUNTRY_ORDER !== 'undefined'
+    ? DEFAULT_FIVE_SIM_COUNTRY_ORDER
+    : ['thailand'];
+  const defaultNexSmsCountryOrderSafe = typeof DEFAULT_NEX_SMS_COUNTRY_ORDER !== 'undefined'
+    ? DEFAULT_NEX_SMS_COUNTRY_ORDER
+    : [1];
+  const phoneSmsProvider = typeof getSelectedPhoneSmsProvider === 'function'
+    ? getSelectedPhoneSmsProvider()
+    : normalizePhoneSmsProviderSafe(
+      (typeof selectPhoneSmsProvider !== 'undefined' ? selectPhoneSmsProvider?.value : '')
+      || latestState?.phoneSmsProvider
+      || defaultPhoneSmsProviderSafe
+    );
+  const phoneSmsProviderOrder = typeof getSelectedPhoneSmsProviderOrder === 'function'
+    ? getSelectedPhoneSmsProviderOrder()
+    : normalizePhoneSmsProviderOrderSafe(
+      latestState?.phoneSmsProviderOrder,
+      [phoneSmsProvider]
+    );
+  const fiveSimCountryOrder = typeof getSelectedFiveSimCountries === 'function'
+    ? getSelectedFiveSimCountries().map((entry) => entry.code)
+    : normalizeFiveSimCountryOrderSafe(latestState?.fiveSimCountryOrder || defaultFiveSimCountryOrderSafe);
+  const nexSmsCountryOrder = typeof getSelectedNexSmsCountries === 'function'
+    ? getSelectedNexSmsCountries().map((entry) => entry.id)
+    : normalizeNexSmsCountryOrderSafe(latestState?.nexSmsCountryOrder || defaultNexSmsCountryOrderSafe);
   const payPalAccounts = typeof getPayPalAccounts === 'function'
     ? getPayPalAccounts(latestState)
     : (Array.isArray(latestState?.paypalAccounts) ? latestState.paypalAccounts : []);
@@ -2635,7 +2749,22 @@ function collectSettingsPayload() {
       inputVerificationResendCount?.value,
       DEFAULT_VERIFICATION_RESEND_COUNT
     ),
+    phoneSmsProvider,
+    phoneSmsProviderOrder,
     heroSmsApiKey: heroSmsApiKeyValue,
+    fiveSimApiKey: (typeof inputFiveSimApiKey !== 'undefined' ? inputFiveSimApiKey?.value : '') || '',
+    fiveSimCountryOrder,
+    fiveSimOperator: normalizeFiveSimOperatorSafe(
+      (typeof inputFiveSimOperator !== 'undefined' ? inputFiveSimOperator?.value : '') || ''
+    ),
+    fiveSimProduct: normalizeFiveSimProductSafe(
+      (typeof inputFiveSimProduct !== 'undefined' ? inputFiveSimProduct?.value : '') || ''
+    ),
+    nexSmsApiKey: (typeof inputNexSmsApiKey !== 'undefined' ? inputNexSmsApiKey?.value : '') || '',
+    nexSmsCountryOrder,
+    nexSmsServiceCode: normalizeNexSmsServiceCodeSafe(
+      (typeof inputNexSmsServiceCode !== 'undefined' ? inputNexSmsServiceCode?.value : '') || ''
+    ),
     heroSmsReuseEnabled: heroSmsReuseEnabledValue,
     heroSmsAcquirePriority: heroSmsAcquirePriorityValue,
     heroSmsMinPrice: heroSmsMinPriceValue,
@@ -2694,6 +2823,408 @@ function normalizeAccountRunHistoryHelperBaseUrlValue(value = '') {
   } catch {
     return DEFAULT_ACCOUNT_RUN_HISTORY_HELPER_BASE_URL;
   }
+}
+
+function normalizePhoneSmsProviderValue(value = '') {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === PHONE_SMS_PROVIDER_FIVE_SIM) {
+    return PHONE_SMS_PROVIDER_FIVE_SIM;
+  }
+  if (normalized === PHONE_SMS_PROVIDER_NEXSMS) {
+    return PHONE_SMS_PROVIDER_NEXSMS;
+  }
+  return PHONE_SMS_PROVIDER_HERO;
+}
+
+function normalizePhoneSmsProviderOrderValue(value = [], fallbackOrder = DEFAULT_PHONE_SMS_PROVIDER_ORDER) {
+  const source = Array.isArray(value)
+    ? value
+    : String(value || '')
+      .split(/[\r\n,，;；|/]+/)
+      .map((entry) => String(entry || '').trim())
+      .filter(Boolean);
+  const normalized = [];
+  const seen = new Set();
+
+  source.forEach((entry) => {
+    const provider = normalizePhoneSmsProviderValue(entry);
+    if (seen.has(provider)) {
+      return;
+    }
+    seen.add(provider);
+    normalized.push(provider);
+  });
+
+  if (normalized.length) {
+    return normalized.slice(0, DEFAULT_PHONE_SMS_PROVIDER_ORDER.length);
+  }
+
+  const fallback = Array.isArray(fallbackOrder) ? fallbackOrder : [];
+  fallback.forEach((entry) => {
+    const provider = normalizePhoneSmsProviderValue(entry);
+    if (seen.has(provider)) {
+      return;
+    }
+    seen.add(provider);
+    normalized.push(provider);
+  });
+  return normalized.slice(0, DEFAULT_PHONE_SMS_PROVIDER_ORDER.length);
+}
+
+function getPhoneSmsProviderLabel(provider = '') {
+  switch (normalizePhoneSmsProviderValue(provider)) {
+    case PHONE_SMS_PROVIDER_FIVE_SIM:
+      return '5sim';
+    case PHONE_SMS_PROVIDER_NEXSMS:
+      return 'NexSMS';
+    default:
+      return 'HeroSMS';
+  }
+}
+
+function formatPhoneSmsProviderOrderSummary(order = []) {
+  const normalized = normalizePhoneSmsProviderOrderValue(order, []);
+  if (!normalized.length) {
+    return '未设置';
+  }
+  return normalized
+    .map((provider, index) => `${index + 1}. ${getPhoneSmsProviderLabel(provider)}`)
+    .join(' → ');
+}
+
+function updatePhoneSmsProviderOrderSummary(order = []) {
+  const normalized = normalizePhoneSmsProviderOrderValue(order, []);
+  if (displayPhoneSmsProviderOrder) {
+    displayPhoneSmsProviderOrder.textContent = formatPhoneSmsProviderOrderSummary(normalized);
+  }
+  if (btnPhoneSmsProviderOrderMenu) {
+    btnPhoneSmsProviderOrderMenu.textContent = normalized.length
+      ? `${normalized.map((provider) => getPhoneSmsProviderLabel(provider)).join(' / ')} (${normalized.length}/3)`
+      : '未选择 (0/3)';
+  }
+}
+
+function setPhoneSmsProviderOrderMenuOpen(open) {
+  const nextOpen = Boolean(open);
+  if (btnPhoneSmsProviderOrderMenu) {
+    btnPhoneSmsProviderOrderMenu.setAttribute('aria-expanded', String(nextOpen));
+  }
+  if (phoneSmsProviderOrderMenu) {
+    phoneSmsProviderOrderMenu.hidden = !nextOpen;
+  }
+}
+
+function renderPhoneSmsProviderOrderMenu(order = []) {
+  if (!phoneSmsProviderOrderMenu || !selectPhoneSmsProviderOrder) {
+    return;
+  }
+  const normalizedOrder = normalizePhoneSmsProviderOrderValue(order, []);
+  const orderIndexByProvider = new Map(
+    normalizedOrder.map((provider, index) => [provider, index + 1])
+  );
+  const options = Array.from(selectPhoneSmsProviderOrder.options || [])
+    .map((option, index) => ({
+      option,
+      provider: normalizePhoneSmsProviderValue(option?.value || ''),
+      originalIndex: index,
+    }))
+    .sort((left, right) => {
+      const leftOrderIndex = orderIndexByProvider.get(left.provider) || 0;
+      const rightOrderIndex = orderIndexByProvider.get(right.provider) || 0;
+      const leftActive = leftOrderIndex > 0;
+      const rightActive = rightOrderIndex > 0;
+      if (leftActive !== rightActive) {
+        return leftActive ? 1 : -1;
+      }
+      if (leftActive && rightActive && leftOrderIndex !== rightOrderIndex) {
+        return leftOrderIndex - rightOrderIndex;
+      }
+      return left.originalIndex - right.originalIndex;
+    });
+
+  phoneSmsProviderOrderMenu.innerHTML = '';
+
+  if (!options.length) {
+    const empty = document.createElement('span');
+    empty.className = 'data-value hero-sms-country-menu-empty';
+    empty.textContent = '暂无服务商选项';
+    phoneSmsProviderOrderMenu.appendChild(empty);
+    return;
+  }
+
+  options.forEach(({ option, provider }) => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'header-dropdown-item hero-sms-country-menu-item phone-sms-provider-order-menu-item';
+
+    const activeIndex = orderIndexByProvider.get(provider) || 0;
+    item.classList.toggle('is-active', activeIndex > 0);
+    item.setAttribute('aria-pressed', String(activeIndex > 0));
+
+    const label = document.createElement('span');
+    label.className = 'hero-sms-country-menu-item-label phone-sms-provider-order-menu-item-label';
+    label.textContent = getPhoneSmsProviderLabel(provider);
+
+    const badge = document.createElement('span');
+    badge.className = 'hero-sms-country-menu-item-badge phone-sms-provider-order-menu-item-badge';
+    badge.textContent = activeIndex > 0 ? `✓ ${activeIndex}` : '';
+
+    item.appendChild(label);
+    item.appendChild(badge);
+    item.addEventListener('click', () => {
+      option.selected = !option.selected;
+      syncPhoneSmsProviderOrderFromSelect({ ensureDefault: true, syncProvider: false });
+      updatePhoneVerificationSettingsUI();
+      markSettingsDirty(true);
+      saveSettings({ silent: true }).catch(() => { });
+    });
+    phoneSmsProviderOrderMenu.appendChild(item);
+  });
+}
+
+function resolveNormalizedProviderOrderForRuntime(state = {}) {
+  const rawOrder = Array.isArray(state?.phoneSmsProviderOrder) ? state.phoneSmsProviderOrder : [];
+  const normalizedOrder = normalizePhoneSmsProviderOrderValue(rawOrder, []);
+  if (normalizedOrder.length) {
+    return normalizedOrder;
+  }
+  return [
+    normalizePhoneSmsProviderValue(
+      state?.phoneSmsProvider || selectPhoneSmsProvider?.value || DEFAULT_PHONE_SMS_PROVIDER
+    ),
+  ];
+}
+
+function syncPhoneSmsProviderOrderFromSelect(options = {}) {
+  const ensureDefault = options.ensureDefault !== false;
+  const syncProvider = Boolean(options.syncProvider);
+  if (!selectPhoneSmsProviderOrder) {
+    phoneSmsProviderOrderSelection = [];
+    updatePhoneSmsProviderOrderSummary([]);
+    return [];
+  }
+
+  const selectedProviders = Array.from(selectPhoneSmsProviderOrder.options || [])
+    .filter((option) => option.selected)
+    .map((option) => normalizePhoneSmsProviderValue(option.value || ''))
+    .filter(Boolean);
+  const selectedSet = new Set(selectedProviders);
+  let nextOrder = phoneSmsProviderOrderSelection.filter((provider) => selectedSet.has(provider));
+  selectedProviders.forEach((provider) => {
+    if (!nextOrder.includes(provider)) {
+      nextOrder.push(provider);
+    }
+  });
+
+  if (ensureDefault && !nextOrder.length) {
+    nextOrder = [getSelectedPhoneSmsProvider()];
+  }
+
+  nextOrder = normalizePhoneSmsProviderOrderValue(nextOrder, ensureDefault ? DEFAULT_PHONE_SMS_PROVIDER_ORDER : []);
+  const nextOrderSet = new Set(nextOrder);
+  Array.from(selectPhoneSmsProviderOrder.options || []).forEach((option) => {
+    option.selected = nextOrderSet.has(normalizePhoneSmsProviderValue(option.value || ''));
+  });
+  phoneSmsProviderOrderSelection = [...nextOrder];
+  if (syncProvider && nextOrder.length && selectPhoneSmsProvider) {
+    selectPhoneSmsProvider.value = nextOrder[0];
+  }
+  updatePhoneSmsProviderOrderSummary(nextOrder);
+  renderPhoneSmsProviderOrderMenu(nextOrder);
+  return nextOrder;
+}
+
+function applyPhoneSmsProviderOrderSelection(order = [], options = {}) {
+  const ensureDefault = options.ensureDefault !== false;
+  const syncProvider = Boolean(options.syncProvider);
+  const normalizedOrder = normalizePhoneSmsProviderOrderValue(
+    order,
+    ensureDefault ? DEFAULT_PHONE_SMS_PROVIDER_ORDER : []
+  );
+  phoneSmsProviderOrderSelection = [...normalizedOrder];
+  if (selectPhoneSmsProviderOrder) {
+    const selectedSet = new Set(normalizedOrder);
+    Array.from(selectPhoneSmsProviderOrder.options || []).forEach((option) => {
+      option.selected = selectedSet.has(normalizePhoneSmsProviderValue(option.value || ''));
+    });
+  }
+  return syncPhoneSmsProviderOrderFromSelect({ ensureDefault, syncProvider });
+}
+
+function getSelectedPhoneSmsProviderOrder() {
+  return normalizePhoneSmsProviderOrderValue(
+    syncPhoneSmsProviderOrderFromSelect({ ensureDefault: false, syncProvider: false }),
+    []
+  );
+}
+
+function getSelectedPhoneSmsProvider() {
+  if (!selectPhoneSmsProvider) {
+    return DEFAULT_PHONE_SMS_PROVIDER;
+  }
+  const normalized = normalizePhoneSmsProviderValue(selectPhoneSmsProvider.value);
+  selectPhoneSmsProvider.value = normalized;
+  return normalized;
+}
+
+function normalizeFiveSimCountryCode(value = '', fallback = DEFAULT_FIVE_SIM_COUNTRY_ORDER[0]) {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, '');
+  return normalized || fallback;
+}
+
+function normalizeFiveSimCountryOrderValue(value = []) {
+  const source = Array.isArray(value)
+    ? value
+    : String(value || '')
+      .split(/[\r\n,，;；]+/)
+      .map((entry) => String(entry || '').trim())
+      .filter(Boolean);
+  const normalized = [];
+  const seen = new Set();
+  source.forEach((entry) => {
+    const code = normalizeFiveSimCountryCode(
+      entry && typeof entry === 'object' && !Array.isArray(entry)
+        ? (entry.code || entry.country || entry.id || '')
+        : entry,
+      ''
+    );
+    if (!code || seen.has(code)) {
+      return;
+    }
+    seen.add(code);
+    normalized.push(code);
+  });
+  return normalized.slice(0, 10);
+}
+
+function normalizeFiveSimOperatorValue(value = '') {
+  return normalizeFiveSimCountryCode(value, DEFAULT_FIVE_SIM_OPERATOR);
+}
+
+function normalizeFiveSimProductValue(value = '') {
+  return normalizeFiveSimCountryCode(value, DEFAULT_FIVE_SIM_PRODUCT);
+}
+
+function normalizeNexSmsCountryIdValue(value, fallback = DEFAULT_NEX_SMS_COUNTRY_ORDER[0]) {
+  const parsed = Math.floor(Number(value));
+  if (Number.isFinite(parsed) && parsed >= 0) {
+    return parsed;
+  }
+  const fallbackParsed = Math.floor(Number(fallback));
+  if (Number.isFinite(fallbackParsed) && fallbackParsed >= 0) {
+    return fallbackParsed;
+  }
+  return 0;
+}
+
+function normalizeNexSmsCountryOrderValue(value = []) {
+  const source = Array.isArray(value)
+    ? value
+    : String(value || '')
+      .split(/[\r\n,，;；]+/)
+      .map((entry) => String(entry || '').trim())
+      .filter(Boolean);
+  const normalized = [];
+  const seen = new Set();
+  source.forEach((entry) => {
+    const countryId = normalizeNexSmsCountryIdValue(
+      entry && typeof entry === 'object' && !Array.isArray(entry)
+        ? (entry.id || entry.countryId || entry.country || '')
+        : entry,
+      -1
+    );
+    if (countryId < 0 || seen.has(countryId)) {
+      return;
+    }
+    seen.add(countryId);
+    normalized.push(countryId);
+  });
+  return normalized.slice(0, 10);
+}
+
+function normalizeNexSmsServiceCodeValue(value = '') {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, '');
+  return normalized || DEFAULT_NEX_SMS_SERVICE_CODE;
+}
+
+function getSelectedFiveSimCountries() {
+  if (!selectFiveSimCountry) {
+    return DEFAULT_FIVE_SIM_COUNTRY_ORDER.map((code) => ({ code, label: code }));
+  }
+  const selectedCodes = normalizeFiveSimCountryOrderValue(
+    Array.from(selectFiveSimCountry.options || [])
+      .filter((option) => option.selected)
+      .map((option) => option.value)
+  );
+  return (selectedCodes.length ? selectedCodes : DEFAULT_FIVE_SIM_COUNTRY_ORDER)
+    .map((code) => {
+      const option = Array.from(selectFiveSimCountry.options || [])
+        .find((item) => normalizeFiveSimCountryCode(item.value, '') === code);
+      const label = String(option?.textContent || '').trim() || code;
+      return { code, label };
+    });
+}
+
+function getSelectedNexSmsCountries() {
+  if (!selectNexSmsCountry) {
+    return DEFAULT_NEX_SMS_COUNTRY_ORDER.map((id) => ({ id, label: `Country #${id}` }));
+  }
+  const selectedIds = normalizeNexSmsCountryOrderValue(
+    Array.from(selectNexSmsCountry.options || [])
+      .filter((option) => option.selected)
+      .map((option) => option.value)
+  );
+  return (selectedIds.length ? selectedIds : DEFAULT_NEX_SMS_COUNTRY_ORDER)
+    .map((id) => {
+      const option = Array.from(selectNexSmsCountry.options || [])
+        .find((item) => normalizeNexSmsCountryIdValue(item.value, -1) === id);
+      const label = String(option?.textContent || '').trim() || `Country #${id}`;
+      return { id, label };
+    });
+}
+
+function renderFiveSimCountryFallbackOrder(countries = []) {
+  if (!displayFiveSimCountryFallbackOrder) {
+    return;
+  }
+  const normalized = normalizeFiveSimCountryOrderValue(
+    Array.isArray(countries) ? countries.map((entry) => entry?.code || entry) : countries
+  );
+  if (!normalized.length) {
+    displayFiveSimCountryFallbackOrder.textContent = '未设置';
+    return;
+  }
+  displayFiveSimCountryFallbackOrder.textContent = normalized
+    .map((code, index) => {
+      const matched = getSelectedFiveSimCountries().find((entry) => entry.code === code);
+      return `${index + 1}. ${matched?.label || code}`;
+    })
+    .join(' → ');
+}
+
+function renderNexSmsCountryFallbackOrder(countries = []) {
+  if (!displayNexSmsCountryFallbackOrder) {
+    return;
+  }
+  const normalized = normalizeNexSmsCountryOrderValue(
+    Array.isArray(countries) ? countries.map((entry) => entry?.id ?? entry) : countries
+  );
+  if (!normalized.length) {
+    displayNexSmsCountryFallbackOrder.textContent = '未设置';
+    return;
+  }
+  displayNexSmsCountryFallbackOrder.textContent = normalized
+    .map((id, index) => {
+      const matched = getSelectedNexSmsCountries().find((entry) => entry.id === id);
+      return `${index + 1}. ${matched?.label || `Country #${id}`}`;
+    })
+    .join(' → ');
 }
 
 function normalizeHeroSmsCountryId(value) {
@@ -3725,6 +4256,40 @@ function updateAccountRunHistorySettingsUI() {
 function updatePhoneVerificationSettingsUI() {
   const enabled = Boolean(inputPhoneVerificationEnabled?.checked);
   const showSettings = enabled && phoneVerificationSectionExpanded;
+  const normalizeProviderSafe = typeof normalizePhoneSmsProviderValue === 'function'
+    ? normalizePhoneSmsProviderValue
+    : ((value = '') => {
+      const normalized = String(value || '').trim().toLowerCase();
+      if (normalized === '5sim') {
+        return '5sim';
+      }
+      if (normalized === 'nexsms') {
+        return 'nexsms';
+      }
+      return 'hero-sms';
+    });
+  const heroProviderValue = typeof PHONE_SMS_PROVIDER_HERO !== 'undefined'
+    ? PHONE_SMS_PROVIDER_HERO
+    : 'hero-sms';
+  const fiveSimProviderValue = typeof PHONE_SMS_PROVIDER_FIVE_SIM !== 'undefined'
+    ? PHONE_SMS_PROVIDER_FIVE_SIM
+    : '5sim';
+  const nexSmsProviderValue = typeof PHONE_SMS_PROVIDER_NEXSMS !== 'undefined'
+    ? PHONE_SMS_PROVIDER_NEXSMS
+    : 'nexsms';
+  const defaultProviderValue = typeof DEFAULT_PHONE_SMS_PROVIDER !== 'undefined'
+    ? DEFAULT_PHONE_SMS_PROVIDER
+    : heroProviderValue;
+  const providerOrderForDisplay = typeof resolveNormalizedProviderOrderForRuntime === 'function'
+    ? resolveNormalizedProviderOrderForRuntime(latestState || {})
+    : [];
+  const provider = providerOrderForDisplay[0]
+    || (typeof getSelectedPhoneSmsProvider === 'function'
+      ? getSelectedPhoneSmsProvider()
+      : normalizeProviderSafe(selectPhoneSmsProvider?.value || defaultProviderValue));
+  const heroProvider = provider === heroProviderValue;
+  const fiveSimProvider = provider === fiveSimProviderValue;
+  const nexSmsProvider = provider === nexSmsProviderValue;
   if (rowPhoneVerificationEnabled) {
     rowPhoneVerificationEnabled.style.display = '';
   }
@@ -3740,12 +4305,20 @@ function updatePhoneVerificationSettingsUI() {
     rowPhoneVerificationFold.style.display = showSettings ? '' : 'none';
   }
 
-  const phoneVerificationRows = [
+  [
+    rowPhoneSmsProvider,
+    rowPhoneSmsProviderOrder,
+    rowPhoneSmsProviderOrderActions,
+  ].forEach((row) => {
+    if (!row) {
+      return;
+    }
+    row.style.display = showSettings ? '' : 'none';
+  });
+
+  [
     typeof rowHeroSmsPlatform !== 'undefined' ? rowHeroSmsPlatform : null,
-    typeof rowHeroSmsCountry !== 'undefined' ? rowHeroSmsCountry : null,
-    typeof rowHeroSmsCountryFallback !== 'undefined' ? rowHeroSmsCountryFallback : null,
     typeof rowHeroSmsAcquirePriority !== 'undefined' ? rowHeroSmsAcquirePriority : null,
-    typeof rowHeroSmsApiKey !== 'undefined' ? rowHeroSmsApiKey : null,
     typeof rowHeroSmsMaxPrice !== 'undefined' ? rowHeroSmsMaxPrice : null,
     typeof rowHeroSmsRuntimePair !== 'undefined' ? rowHeroSmsRuntimePair : null,
     typeof rowHeroSmsCurrentNumber !== 'undefined' ? rowHeroSmsCurrentNumber : null,
@@ -3757,13 +4330,67 @@ function updatePhoneVerificationSettingsUI() {
     typeof rowPhoneCodeTimeoutWindows !== 'undefined' ? rowPhoneCodeTimeoutWindows : null,
     typeof rowPhoneCodePollIntervalSeconds !== 'undefined' ? rowPhoneCodePollIntervalSeconds : null,
     typeof rowPhoneCodePollMaxRounds !== 'undefined' ? rowPhoneCodePollMaxRounds : null,
-  ];
-  phoneVerificationRows.forEach((row) => {
-    if (!row) {
-      return;
+  ].forEach((row) => {
+    if (row) {
+      row.style.display = showSettings ? '' : 'none';
     }
-    row.style.display = showSettings ? '' : 'none';
   });
+
+  [
+    typeof rowHeroSmsCountry !== 'undefined' ? rowHeroSmsCountry : null,
+    typeof rowHeroSmsCountryFallback !== 'undefined' ? rowHeroSmsCountryFallback : null,
+    typeof rowHeroSmsApiKey !== 'undefined' ? rowHeroSmsApiKey : null,
+  ].forEach((row) => {
+    if (row) {
+      row.style.display = showSettings && heroProvider ? '' : 'none';
+    }
+  });
+
+  [
+    typeof rowFiveSimApiKey !== 'undefined' ? rowFiveSimApiKey : null,
+    typeof rowFiveSimCountry !== 'undefined' ? rowFiveSimCountry : null,
+    typeof rowFiveSimCountryFallback !== 'undefined' ? rowFiveSimCountryFallback : null,
+    typeof rowFiveSimOperator !== 'undefined' ? rowFiveSimOperator : null,
+    typeof rowFiveSimProduct !== 'undefined' ? rowFiveSimProduct : null,
+  ].forEach((row) => {
+    if (row) {
+      row.style.display = showSettings && fiveSimProvider ? '' : 'none';
+    }
+  });
+
+  [
+    typeof rowNexSmsApiKey !== 'undefined' ? rowNexSmsApiKey : null,
+    typeof rowNexSmsCountry !== 'undefined' ? rowNexSmsCountry : null,
+    typeof rowNexSmsCountryFallback !== 'undefined' ? rowNexSmsCountryFallback : null,
+    typeof rowNexSmsServiceCode !== 'undefined' ? rowNexSmsServiceCode : null,
+  ].forEach((row) => {
+    if (row) {
+      row.style.display = showSettings && nexSmsProvider ? '' : 'none';
+    }
+  });
+
+  if (showSettings) {
+    updatePhoneSmsProviderOrderSummary(
+      (typeof normalizePhoneSmsProviderOrderValue === 'function'
+        ? normalizePhoneSmsProviderOrderValue
+        : ((value = [], fallbackOrder = []) => {
+          const source = Array.isArray(value) ? value : [];
+          if (source.length) {
+            return source.map((entry) => normalizeProviderSafe(entry)).slice(0, 3);
+          }
+          return Array.isArray(fallbackOrder)
+            ? fallbackOrder.map((entry) => normalizeProviderSafe(entry)).slice(0, 3)
+            : [];
+        }))(
+        typeof phoneSmsProviderOrderSelection !== 'undefined'
+          && Array.isArray(phoneSmsProviderOrderSelection)
+          && phoneSmsProviderOrderSelection.length
+          ? phoneSmsProviderOrderSelection
+          : providerOrderForDisplay,
+        [provider]
+      )
+    );
+  }
   if (!showSettings && typeof rowHeroSmsPriceTiers !== 'undefined' && rowHeroSmsPriceTiers) {
     rowHeroSmsPriceTiers.style.display = 'none';
   }
@@ -4287,8 +4914,52 @@ function applySettingsState(state) {
       ? Boolean(state.phoneVerificationEnabled)
       : DEFAULT_PHONE_VERIFICATION_ENABLED;
   }
+  if (selectPhoneSmsProvider) {
+    selectPhoneSmsProvider.value = normalizePhoneSmsProviderValue(
+      state?.phoneSmsProvider || DEFAULT_PHONE_SMS_PROVIDER
+    );
+  }
+  if (typeof applyPhoneSmsProviderOrderSelection === 'function') {
+    applyPhoneSmsProviderOrderSelection(
+      state?.phoneSmsProviderOrder || [selectPhoneSmsProvider?.value || DEFAULT_PHONE_SMS_PROVIDER],
+      { ensureDefault: true, syncProvider: false }
+    );
+  }
   if (inputHeroSmsApiKey) {
     inputHeroSmsApiKey.value = state?.heroSmsApiKey || '';
+  }
+  if (inputFiveSimApiKey) {
+    inputFiveSimApiKey.value = state?.fiveSimApiKey || '';
+  }
+  if (inputFiveSimOperator) {
+    inputFiveSimOperator.value = normalizeFiveSimOperatorValue(state?.fiveSimOperator || DEFAULT_FIVE_SIM_OPERATOR);
+  }
+  if (inputFiveSimProduct) {
+    inputFiveSimProduct.value = normalizeFiveSimProductValue(state?.fiveSimProduct || DEFAULT_FIVE_SIM_PRODUCT);
+  }
+  if (selectFiveSimCountry) {
+    const restoredCodes = normalizeFiveSimCountryOrderValue(state?.fiveSimCountryOrder || DEFAULT_FIVE_SIM_COUNTRY_ORDER);
+    fiveSimCountrySelectionOrder = [...restoredCodes];
+    const restoredSet = new Set(restoredCodes);
+    Array.from(selectFiveSimCountry.options || []).forEach((option) => {
+      option.selected = restoredSet.has(normalizeFiveSimCountryCode(option.value, ''));
+    });
+    renderFiveSimCountryFallbackOrder(restoredCodes);
+  }
+  if (inputNexSmsApiKey) {
+    inputNexSmsApiKey.value = state?.nexSmsApiKey || '';
+  }
+  if (inputNexSmsServiceCode) {
+    inputNexSmsServiceCode.value = normalizeNexSmsServiceCodeValue(state?.nexSmsServiceCode || DEFAULT_NEX_SMS_SERVICE_CODE);
+  }
+  if (selectNexSmsCountry) {
+    const restoredIds = normalizeNexSmsCountryOrderValue(state?.nexSmsCountryOrder || DEFAULT_NEX_SMS_COUNTRY_ORDER);
+    nexSmsCountrySelectionOrder = [...restoredIds];
+    const restoredSet = new Set(restoredIds.map((id) => String(id)));
+    Array.from(selectNexSmsCountry.options || []).forEach((option) => {
+      option.selected = restoredSet.has(String(normalizeNexSmsCountryIdValue(option.value, -1)));
+    });
+    renderNexSmsCountryFallbackOrder(restoredIds);
   }
   if (typeof inputHeroSmsReuseEnabled !== 'undefined' && inputHeroSmsReuseEnabled) {
     inputHeroSmsReuseEnabled.checked = normalizeHeroSmsReuseEnabledValue(state?.heroSmsReuseEnabled);
@@ -8189,6 +8860,48 @@ inputPhoneVerificationEnabled?.addEventListener('change', () => {
   saveSettings({ silent: true }).catch(() => { });
 });
 
+selectPhoneSmsProvider?.addEventListener('change', () => {
+  selectPhoneSmsProvider.value = normalizePhoneSmsProviderValue(selectPhoneSmsProvider.value);
+  if (Array.isArray(phoneSmsProviderOrderSelection) && phoneSmsProviderOrderSelection.length) {
+    phoneSmsProviderOrderSelection = [
+      selectPhoneSmsProvider.value,
+      ...phoneSmsProviderOrderSelection.filter((provider) => provider !== selectPhoneSmsProvider.value),
+    ];
+  } else {
+    phoneSmsProviderOrderSelection = [selectPhoneSmsProvider.value];
+  }
+  applyPhoneSmsProviderOrderSelection(phoneSmsProviderOrderSelection, {
+    ensureDefault: true,
+    syncProvider: false,
+  });
+  updatePhoneVerificationSettingsUI();
+  markSettingsDirty(true);
+  saveSettings({ silent: true }).catch(() => { });
+});
+
+selectPhoneSmsProviderOrder?.addEventListener('change', () => {
+  syncPhoneSmsProviderOrderFromSelect({ ensureDefault: true, syncProvider: false });
+  updatePhoneVerificationSettingsUI();
+  markSettingsDirty(true);
+  saveSettings({ silent: true }).catch(() => { });
+});
+
+btnPhoneSmsProviderOrderMenu?.addEventListener('click', (event) => {
+  event.preventDefault();
+  const nextOpen = btnPhoneSmsProviderOrderMenu.getAttribute('aria-expanded') !== 'true';
+  setPhoneSmsProviderOrderMenuOpen(nextOpen);
+});
+
+btnPhoneSmsProviderOrderReset?.addEventListener('click', () => {
+  applyPhoneSmsProviderOrderSelection(DEFAULT_PHONE_SMS_PROVIDER_ORDER, {
+    ensureDefault: true,
+    syncProvider: false,
+  });
+  updatePhoneVerificationSettingsUI();
+  markSettingsDirty(true);
+  saveSettings({ silent: true }).catch(() => { });
+});
+
 inputAccountRunHistoryHelperBaseUrl?.addEventListener('input', () => {
   markSettingsDirty(true);
   scheduleSettingsAutoSave();
@@ -8231,6 +8944,63 @@ inputHeroSmsApiKey?.addEventListener('input', () => {
   scheduleSettingsAutoSave();
 });
 inputHeroSmsApiKey?.addEventListener('blur', () => {
+  saveSettings({ silent: true }).catch(() => { });
+});
+
+inputFiveSimApiKey?.addEventListener('input', () => {
+  markSettingsDirty(true);
+  scheduleSettingsAutoSave();
+});
+inputFiveSimApiKey?.addEventListener('blur', () => {
+  saveSettings({ silent: true }).catch(() => { });
+});
+
+inputFiveSimOperator?.addEventListener('input', () => {
+  markSettingsDirty(true);
+  scheduleSettingsAutoSave();
+});
+inputFiveSimOperator?.addEventListener('blur', () => {
+  inputFiveSimOperator.value = normalizeFiveSimOperatorValue(inputFiveSimOperator.value);
+  saveSettings({ silent: true }).catch(() => { });
+});
+
+inputFiveSimProduct?.addEventListener('input', () => {
+  markSettingsDirty(true);
+  scheduleSettingsAutoSave();
+});
+inputFiveSimProduct?.addEventListener('blur', () => {
+  inputFiveSimProduct.value = normalizeFiveSimProductValue(inputFiveSimProduct.value);
+  saveSettings({ silent: true }).catch(() => { });
+});
+
+selectFiveSimCountry?.addEventListener('change', () => {
+  fiveSimCountrySelectionOrder = getSelectedFiveSimCountries().map((entry) => entry.code);
+  renderFiveSimCountryFallbackOrder(fiveSimCountrySelectionOrder);
+  markSettingsDirty(true);
+  saveSettings({ silent: true }).catch(() => { });
+});
+
+inputNexSmsApiKey?.addEventListener('input', () => {
+  markSettingsDirty(true);
+  scheduleSettingsAutoSave();
+});
+inputNexSmsApiKey?.addEventListener('blur', () => {
+  saveSettings({ silent: true }).catch(() => { });
+});
+
+inputNexSmsServiceCode?.addEventListener('input', () => {
+  markSettingsDirty(true);
+  scheduleSettingsAutoSave();
+});
+inputNexSmsServiceCode?.addEventListener('blur', () => {
+  inputNexSmsServiceCode.value = normalizeNexSmsServiceCodeValue(inputNexSmsServiceCode.value);
+  saveSettings({ silent: true }).catch(() => { });
+});
+
+selectNexSmsCountry?.addEventListener('change', () => {
+  nexSmsCountrySelectionOrder = getSelectedNexSmsCountries().map((entry) => entry.id);
+  renderNexSmsCountryFallbackOrder(nexSmsCountrySelectionOrder);
+  markSettingsDirty(true);
   saveSettings({ silent: true }).catch(() => { });
 });
 
@@ -8924,6 +9694,59 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         updatePhoneVerificationSettingsUI();
       }
       if (
+        message.payload.phoneSmsProvider !== undefined
+        || message.payload.phoneSmsProviderOrder !== undefined
+      ) {
+        const nextProvider = normalizePhoneSmsProviderValue(
+          message.payload.phoneSmsProvider !== undefined
+            ? message.payload.phoneSmsProvider
+            : (latestState?.phoneSmsProvider || selectPhoneSmsProvider?.value || DEFAULT_PHONE_SMS_PROVIDER)
+        );
+        if (selectPhoneSmsProvider) {
+          selectPhoneSmsProvider.value = nextProvider;
+        }
+        applyPhoneSmsProviderOrderSelection(
+          message.payload.phoneSmsProviderOrder !== undefined
+            ? message.payload.phoneSmsProviderOrder
+            : (latestState?.phoneSmsProviderOrder || [nextProvider]),
+          { ensureDefault: true, syncProvider: false }
+        );
+        updatePhoneVerificationSettingsUI();
+      }
+      if (message.payload.fiveSimApiKey !== undefined && inputFiveSimApiKey) {
+        inputFiveSimApiKey.value = message.payload.fiveSimApiKey || '';
+      }
+      if (message.payload.fiveSimOperator !== undefined && inputFiveSimOperator) {
+        inputFiveSimOperator.value = normalizeFiveSimOperatorValue(message.payload.fiveSimOperator);
+      }
+      if (message.payload.fiveSimProduct !== undefined && inputFiveSimProduct) {
+        inputFiveSimProduct.value = normalizeFiveSimProductValue(message.payload.fiveSimProduct);
+      }
+      if (message.payload.fiveSimCountryOrder !== undefined && selectFiveSimCountry) {
+        const restoredCodes = normalizeFiveSimCountryOrderValue(message.payload.fiveSimCountryOrder);
+        fiveSimCountrySelectionOrder = [...restoredCodes];
+        const restoredSet = new Set(restoredCodes);
+        Array.from(selectFiveSimCountry.options || []).forEach((option) => {
+          option.selected = restoredSet.has(normalizeFiveSimCountryCode(option.value, ''));
+        });
+        renderFiveSimCountryFallbackOrder(restoredCodes);
+      }
+      if (message.payload.nexSmsApiKey !== undefined && inputNexSmsApiKey) {
+        inputNexSmsApiKey.value = message.payload.nexSmsApiKey || '';
+      }
+      if (message.payload.nexSmsServiceCode !== undefined && inputNexSmsServiceCode) {
+        inputNexSmsServiceCode.value = normalizeNexSmsServiceCodeValue(message.payload.nexSmsServiceCode);
+      }
+      if (message.payload.nexSmsCountryOrder !== undefined && selectNexSmsCountry) {
+        const restoredIds = normalizeNexSmsCountryOrderValue(message.payload.nexSmsCountryOrder);
+        nexSmsCountrySelectionOrder = [...restoredIds];
+        const restoredSet = new Set(restoredIds.map((id) => String(id)));
+        Array.from(selectNexSmsCountry.options || []).forEach((option) => {
+          option.selected = restoredSet.has(String(normalizeNexSmsCountryIdValue(option.value, -1)));
+        });
+        renderNexSmsCountryFallbackOrder(restoredIds);
+      }
+      if (
         message.payload.heroSmsCountryId !== undefined
         || message.payload.heroSmsCountryLabel !== undefined
         || message.payload.heroSmsCountryFallback !== undefined
@@ -9032,6 +9855,7 @@ btnTheme.addEventListener('click', () => {
 document.addEventListener('click', (event) => {
   const clickedInsideConfigMenu = Boolean(configMenuShell?.contains(event.target));
   const clickedInsideCountryMenu = Boolean(heroSmsCountryMenuShell?.contains(event.target));
+  const clickedInsideProviderOrderMenu = Boolean(phoneSmsProviderOrderMenuShell?.contains(event.target));
 
   if (configMenuOpen && !clickedInsideConfigMenu) {
     closeConfigMenu();
@@ -9040,6 +9864,10 @@ document.addEventListener('click', (event) => {
   const countryMenuOpen = btnHeroSmsCountryMenu?.getAttribute('aria-expanded') === 'true';
   if (countryMenuOpen && !clickedInsideCountryMenu) {
     setHeroSmsCountryMenuOpen(false);
+  }
+  const providerOrderMenuOpen = btnPhoneSmsProviderOrderMenu?.getAttribute('aria-expanded') === 'true';
+  if (providerOrderMenuOpen && !clickedInsideProviderOrderMenu) {
+    setPhoneSmsProviderOrderMenuOpen(false);
   }
 });
 
@@ -9055,6 +9883,9 @@ document.addEventListener('keydown', (event) => {
   }
   if (btnHeroSmsCountryMenu?.getAttribute('aria-expanded') === 'true') {
     setHeroSmsCountryMenuOpen(false);
+  }
+  if (btnPhoneSmsProviderOrderMenu?.getAttribute('aria-expanded') === 'true') {
+    setPhoneSmsProviderOrderMenuOpen(false);
   }
 });
 

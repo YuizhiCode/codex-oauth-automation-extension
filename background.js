@@ -294,6 +294,22 @@ const DEFAULT_ACCOUNT_RUN_HISTORY_HELPER_BASE_URL = DEFAULT_HOTMAIL_LOCAL_BASE_U
 const HOTMAIL_LOCAL_HELPER_TIMEOUT_MS = 45000;
 const DEFAULT_LUCKMAIL_PROJECT_CODE = 'openai';
 const DEFAULT_HERO_SMS_BASE_URL = 'https://hero-sms.com/stubs/handler_api.php';
+const PHONE_SMS_PROVIDER_HERO = 'hero-sms';
+const PHONE_SMS_PROVIDER_5SIM = '5sim';
+const PHONE_SMS_PROVIDER_NEXSMS = 'nexsms';
+const DEFAULT_PHONE_SMS_PROVIDER = PHONE_SMS_PROVIDER_HERO;
+const DEFAULT_PHONE_SMS_PROVIDER_ORDER = Object.freeze([
+  PHONE_SMS_PROVIDER_HERO,
+  PHONE_SMS_PROVIDER_5SIM,
+  PHONE_SMS_PROVIDER_NEXSMS,
+]);
+const DEFAULT_FIVE_SIM_BASE_URL = 'https://5sim.net/v1';
+const DEFAULT_FIVE_SIM_PRODUCT = 'openai';
+const DEFAULT_FIVE_SIM_OPERATOR = 'any';
+const DEFAULT_FIVE_SIM_COUNTRY_ORDER = Object.freeze(['thailand']);
+const DEFAULT_NEX_SMS_BASE_URL = 'https://api.nexsms.net';
+const DEFAULT_NEX_SMS_SERVICE_CODE = 'ot';
+const DEFAULT_NEX_SMS_COUNTRY_ORDER = Object.freeze([1]);
 const HERO_SMS_SERVICE_CODE = 'dr';
 const HERO_SMS_SERVICE_LABEL = 'OpenAI';
 const HERO_SMS_COUNTRY_ID = 52;
@@ -483,6 +499,8 @@ const PERSISTED_SETTING_DEFAULTS = {
   autoRunDelayMinutes: 30,
   autoStepDelaySeconds: null,
   phoneVerificationEnabled: false,
+  phoneSmsProvider: DEFAULT_PHONE_SMS_PROVIDER,
+  phoneSmsProviderOrder: DEFAULT_PHONE_SMS_PROVIDER_ORDER,
   verificationResendCount: DEFAULT_VERIFICATION_RESEND_COUNT,
   phoneVerificationReplacementLimit: DEFAULT_PHONE_VERIFICATION_REPLACEMENT_LIMIT,
   phoneCodeWaitSeconds: DEFAULT_PHONE_CODE_WAIT_SECONDS,
@@ -528,6 +546,15 @@ const PERSISTED_SETTING_DEFAULTS = {
   mail2925Accounts: [],
   paypalAccounts: [],
   heroSmsApiKey: '',
+  fiveSimApiKey: '',
+  fiveSimBaseUrl: DEFAULT_FIVE_SIM_BASE_URL,
+  fiveSimCountryOrder: [],
+  fiveSimOperator: DEFAULT_FIVE_SIM_OPERATOR,
+  fiveSimProduct: DEFAULT_FIVE_SIM_PRODUCT,
+  nexSmsApiKey: '',
+  nexSmsBaseUrl: DEFAULT_NEX_SMS_BASE_URL,
+  nexSmsCountryOrder: [],
+  nexSmsServiceCode: DEFAULT_NEX_SMS_SERVICE_CODE,
   heroSmsReuseEnabled: DEFAULT_HERO_SMS_REUSE_ENABLED,
   heroSmsAcquirePriority: DEFAULT_HERO_SMS_ACQUIRE_PRIORITY,
   heroSmsMinPrice: DEFAULT_HERO_SMS_MIN_PRICE,
@@ -1358,6 +1385,186 @@ function resolveCloudflareTempEmailPollTargetEmail(state = {}, pollPayload = {},
   return normalizeCloudflareTempEmailReceiveMailbox(state.email);
 }
 
+function normalizePhoneSmsProvider(value = '') {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === PHONE_SMS_PROVIDER_5SIM) {
+    return PHONE_SMS_PROVIDER_5SIM;
+  }
+  if (normalized === PHONE_SMS_PROVIDER_NEXSMS) {
+    return PHONE_SMS_PROVIDER_NEXSMS;
+  }
+  return PHONE_SMS_PROVIDER_HERO;
+}
+
+function normalizePhoneSmsProviderOrder(value = [], fallbackOrder = []) {
+  const source = Array.isArray(value)
+    ? value
+    : String(value || '')
+      .split(/[\r\n,，;；|/]+/)
+      .map((entry) => String(entry || '').trim())
+      .filter(Boolean);
+  const normalized = [];
+  const seen = new Set();
+
+  source.forEach((entry) => {
+    const provider = normalizePhoneSmsProvider(entry);
+    if (seen.has(provider)) {
+      return;
+    }
+    seen.add(provider);
+    normalized.push(provider);
+  });
+
+  if (normalized.length) {
+    return normalized.slice(0, 3);
+  }
+
+  const fallback = Array.isArray(fallbackOrder) ? fallbackOrder : [];
+  const fallbackNormalized = [];
+  fallback.forEach((providerEntry) => {
+    const provider = normalizePhoneSmsProvider(providerEntry);
+    if (!provider || fallbackNormalized.includes(provider)) {
+      return;
+    }
+    fallbackNormalized.push(provider);
+  });
+
+  return fallbackNormalized.slice(0, 3);
+}
+
+function normalizeFiveSimBaseUrl(value = '', fallback = DEFAULT_FIVE_SIM_BASE_URL) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) {
+    return fallback;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      return fallback;
+    }
+    return parsed.toString().replace(/\/$/, '');
+  } catch {
+    return fallback;
+  }
+}
+
+function normalizeFiveSimCountryCode(value = '', fallback = 'thailand') {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, '');
+  return normalized || fallback;
+}
+
+function normalizeFiveSimCountryOrder(value = []) {
+  const source = Array.isArray(value)
+    ? value
+    : String(value || '')
+      .split(/[\r\n,，;；]+/)
+      .map((entry) => String(entry || '').trim())
+      .filter(Boolean);
+  const seen = new Set();
+  const normalized = [];
+
+  for (const entry of source) {
+    const code = normalizeFiveSimCountryCode(
+      entry && typeof entry === 'object' && !Array.isArray(entry)
+        ? (entry.code || entry.country || entry.id || '')
+        : entry,
+      ''
+    );
+    if (!code || seen.has(code)) {
+      continue;
+    }
+    seen.add(code);
+    normalized.push(code);
+    if (normalized.length >= 10) {
+      break;
+    }
+  }
+
+  return normalized;
+}
+
+function normalizeFiveSimOperator(value = '', fallback = DEFAULT_FIVE_SIM_OPERATOR) {
+  return normalizeFiveSimCountryCode(value, fallback);
+}
+
+function normalizeFiveSimProduct(value = '', fallback = DEFAULT_FIVE_SIM_PRODUCT) {
+  return normalizeFiveSimCountryCode(value, fallback);
+}
+
+function normalizeNexSmsBaseUrl(value = '', fallback = DEFAULT_NEX_SMS_BASE_URL) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) {
+    return fallback;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      return fallback;
+    }
+    return parsed.toString().replace(/\/$/, '');
+  } catch {
+    return fallback;
+  }
+}
+
+function normalizeNexSmsCountryId(value, fallback = 0) {
+  const parsed = Math.floor(Number(value));
+  if (Number.isFinite(parsed) && parsed >= 0) {
+    return parsed;
+  }
+  const fallbackParsed = Math.floor(Number(fallback));
+  if (Number.isFinite(fallbackParsed) && fallbackParsed >= 0) {
+    return fallbackParsed;
+  }
+  return 0;
+}
+
+function normalizeNexSmsCountryOrder(value = []) {
+  const source = Array.isArray(value)
+    ? value
+    : String(value || '')
+      .split(/[\r\n,，;；]+/)
+      .map((entry) => String(entry || '').trim())
+      .filter(Boolean);
+  const seen = new Set();
+  const normalized = [];
+  for (const entry of source) {
+    const countryId = normalizeNexSmsCountryId(
+      entry && typeof entry === 'object' && !Array.isArray(entry)
+        ? (entry.id || entry.countryId || entry.country || '')
+        : entry,
+      -1
+    );
+    if (countryId < 0 || seen.has(countryId)) {
+      continue;
+    }
+    seen.add(countryId);
+    normalized.push(countryId);
+    if (normalized.length >= 10) {
+      break;
+    }
+  }
+  return normalized;
+}
+
+function normalizeNexSmsServiceCode(value = '', fallback = DEFAULT_NEX_SMS_SERVICE_CODE) {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, '');
+  if (normalized) {
+    return normalized;
+  }
+  const fallbackNormalized = String(fallback || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, '');
+  return fallbackNormalized || 'ot';
+}
+
 function normalizePersistentSettingValue(key, value) {
   switch (key) {
     case 'panelMode':
@@ -1453,6 +1660,10 @@ function normalizePersistentSettingValue(key, value) {
     case 'plusModeEnabled':
     case 'gptOnlyModeEnabled':
       return Boolean(value);
+    case 'phoneSmsProvider':
+      return normalizePhoneSmsProvider(value);
+    case 'phoneSmsProviderOrder':
+      return normalizePhoneSmsProviderOrder(value, DEFAULT_PHONE_SMS_PROVIDER_ORDER);
     case 'autoRunFallbackThreadIntervalMinutes':
       return normalizeAutoRunFallbackThreadIntervalMinutes(value);
     case 'autoRunDelayMinutes':
@@ -1542,6 +1753,24 @@ function normalizePersistentSettingValue(key, value) {
       return normalizePayPalAccounts(value);
     case 'heroSmsApiKey':
       return String(value || '');
+    case 'fiveSimApiKey':
+      return String(value || '').trim();
+    case 'fiveSimBaseUrl':
+      return normalizeFiveSimBaseUrl(value, DEFAULT_FIVE_SIM_BASE_URL);
+    case 'fiveSimCountryOrder':
+      return normalizeFiveSimCountryOrder(value);
+    case 'fiveSimOperator':
+      return normalizeFiveSimOperator(value, DEFAULT_FIVE_SIM_OPERATOR);
+    case 'fiveSimProduct':
+      return normalizeFiveSimProduct(value, DEFAULT_FIVE_SIM_PRODUCT);
+    case 'nexSmsApiKey':
+      return String(value || '').trim();
+    case 'nexSmsBaseUrl':
+      return normalizeNexSmsBaseUrl(value, DEFAULT_NEX_SMS_BASE_URL);
+    case 'nexSmsCountryOrder':
+      return normalizeNexSmsCountryOrder(value);
+    case 'nexSmsServiceCode':
+      return normalizeNexSmsServiceCode(value, DEFAULT_NEX_SMS_SERVICE_CODE);
     case 'heroSmsReuseEnabled':
       return Boolean(value);
     case 'heroSmsAcquirePriority':
@@ -9123,8 +9352,15 @@ const verificationFlowHelpers = self.MultiPageBackgroundVerificationFlow?.create
 });
 const phoneVerificationHelpers = self.MultiPageBackgroundPhoneVerification?.createPhoneVerificationHelpers({
   addLog,
+  DEFAULT_FIVE_SIM_BASE_URL,
+  DEFAULT_FIVE_SIM_COUNTRY_ORDER,
+  DEFAULT_FIVE_SIM_OPERATOR,
+  DEFAULT_FIVE_SIM_PRODUCT,
   DEFAULT_HERO_SMS_BASE_URL,
   DEFAULT_HERO_SMS_REUSE_ENABLED,
+  DEFAULT_NEX_SMS_BASE_URL,
+  DEFAULT_NEX_SMS_COUNTRY_ORDER,
+  DEFAULT_NEX_SMS_SERVICE_CODE,
   DEFAULT_PHONE_CODE_WAIT_SECONDS,
   DEFAULT_PHONE_CODE_TIMEOUT_WINDOWS,
   DEFAULT_PHONE_CODE_POLL_INTERVAL_SECONDS,

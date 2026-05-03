@@ -467,6 +467,40 @@
               <input type="text" id="input-account-run-history-helper-base-url" class="data-input mono"
                 placeholder="http://127.0.0.1:17373" />
             </div>
+            <div class="data-row" id="row-phone-sms-provider" style="display:none;">
+              <span class="data-label">接码服务商</span>
+              <select id="select-phone-sms-provider" class="data-select mono">
+                <option value="hero-sms">HeroSMS</option>
+                <option value="5sim">5sim</option>
+                <option value="nexsms">NexSMS</option>
+              </select>
+            </div>
+            <div class="data-row" id="row-phone-sms-provider-order" style="display:none;">
+              <span class="data-label">服务商顺序</span>
+              <div class="data-inline hero-sms-country-stack">
+                <select id="select-phone-sms-provider-order" class="data-input mono" multiple size="3" style="display:none;">
+                  <option value="hero-sms" selected>HeroSMS</option>
+                  <option value="5sim" selected>5sim</option>
+                  <option value="nexsms" selected>NexSMS</option>
+                </select>
+                <div class="hero-sms-country-mainline">
+                  <div id="phone-sms-provider-order-menu-shell" class="hero-sms-country-menu">
+                    <button id="btn-phone-sms-provider-order-menu" class="btn btn-outline btn-sm hero-sms-country-menu-btn" type="button" aria-haspopup="listbox" aria-expanded="false">
+                      HeroSMS / 5sim / NexSMS (3/3)
+                    </button>
+                    <div id="phone-sms-provider-order-menu" class="hero-sms-country-menu-dropdown" role="listbox" aria-multiselectable="true" hidden></div>
+                  </div>
+                </div>
+                <span class="data-value hero-sms-country-note">第一位为主服务商，后续按顺序自动回退。</span>
+              </div>
+            </div>
+            <div class="data-row" id="row-phone-sms-provider-order-actions" style="display:none;">
+              <span class="data-label">顺序管理</span>
+              <div class="data-inline data-value-actions">
+                <span id="display-phone-sms-provider-order" class="data-value data-value-fill mono">未设置</span>
+                <button id="btn-phone-sms-provider-order-reset" class="btn btn-ghost btn-xs data-inline-btn" type="button">清空</button>
+              </div>
+            </div>
             <div class="data-row" id="row-hero-sms-platform" style="display:none;">
               <span class="data-label">接码平台</span>
               <span id="display-hero-sms-platform" class="data-value mono">HeroSMS / OpenAI / Thailand</span>
@@ -512,6 +546,65 @@
                   data-password-toggle="input-hero-sms-api-key" data-show-label="显示 HeroSMS API Key"
                   data-hide-label="隐藏 HeroSMS API Key" aria-label="显示 HeroSMS API Key" title="显示 HeroSMS API Key"></button>
               </div>
+            </div>
+            <div class="data-row" id="row-five-sim-api-key" style="display:none;">
+              <span class="data-label">5sim API</span>
+              <div class="input-with-icon">
+                <input type="password" id="input-five-sim-api-key" class="data-input data-input-with-icon mono"
+                  placeholder="请输入 5sim API Key（Bearer Token）" />
+              </div>
+            </div>
+            <div class="data-row" id="row-five-sim-country" style="display:none;">
+              <span class="data-label">国家优先级</span>
+              <div class="data-inline hero-sms-country-stack">
+                <select id="select-five-sim-country" class="data-input mono" multiple size="6" style="display:none;">
+                  <option value="thailand" selected>Thailand</option>
+                </select>
+                <span class="data-value hero-sms-country-note">当前分支先支持持久化与后端使用，国家列表后续按需增强。</span>
+              </div>
+            </div>
+            <div class="data-row" id="row-five-sim-country-fallback" style="display:none;">
+              <span class="data-label">生效顺序</span>
+              <div class="data-inline data-value-actions">
+                <span id="display-five-sim-country-fallback-order" class="data-value data-value-fill mono">未设置</span>
+              </div>
+            </div>
+            <div class="data-row" id="row-five-sim-operator" style="display:none;">
+              <span class="data-label">运营商</span>
+              <input type="text" id="input-five-sim-operator" class="data-input mono"
+                placeholder="any" />
+            </div>
+            <div class="data-row" id="row-five-sim-product" style="display:none;">
+              <span class="data-label">产品代码</span>
+              <input type="text" id="input-five-sim-product" class="data-input mono"
+                placeholder="openai" />
+            </div>
+            <div class="data-row" id="row-nex-sms-api-key" style="display:none;">
+              <span class="data-label">NexSMS API</span>
+              <div class="input-with-icon">
+                <input type="password" id="input-nex-sms-api-key" class="data-input data-input-with-icon mono"
+                  placeholder="请输入 NexSMS API Key" />
+              </div>
+            </div>
+            <div class="data-row" id="row-nex-sms-country" style="display:none;">
+              <span class="data-label">国家优先级</span>
+              <div class="data-inline hero-sms-country-stack">
+                <select id="select-nex-sms-country" class="data-input mono" multiple size="6" style="display:none;">
+                  <option value="1" selected>Country #1</option>
+                </select>
+                <span class="data-value hero-sms-country-note">当前分支先支持持久化与后端使用，国家列表后续按需增强。</span>
+              </div>
+            </div>
+            <div class="data-row" id="row-nex-sms-country-fallback" style="display:none;">
+              <span class="data-label">生效顺序</span>
+              <div class="data-inline data-value-actions">
+                <span id="display-nex-sms-country-fallback-order" class="data-value data-value-fill mono">未设置</span>
+              </div>
+            </div>
+            <div class="data-row" id="row-nex-sms-service-code" style="display:none;">
+              <span class="data-label">服务代码</span>
+              <input type="text" id="input-nex-sms-service-code" class="data-input mono"
+                placeholder="ot" />
             </div>
             <div class="data-row" id="row-hero-sms-max-price" style="display:none;">
               <span class="data-label">价格</span>

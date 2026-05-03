@@ -62,6 +62,13 @@ test('sidepanel html exposes phone verification toggle and dedicated HeroSMS row
   assert.match(html, /id="btn-toggle-phone-verification-section"/);
   assert.match(html, /id="row-phone-verification-fold"/);
   assert.match(html, /id="input-phone-verification-enabled"/);
+  assert.match(html, /id="row-phone-sms-provider"/);
+  assert.match(html, /id="select-phone-sms-provider"/);
+  assert.match(html, /id="row-phone-sms-provider-order"/);
+  assert.match(html, /id="select-phone-sms-provider-order"[^>]*multiple/);
+  assert.match(html, /id="btn-phone-sms-provider-order-menu"/);
+  assert.match(html, /id="row-phone-sms-provider-order-actions"/);
+  assert.match(html, /id="btn-phone-sms-provider-order-reset"/);
   assert.match(html, /id="row-hero-sms-platform"/);
   assert.match(html, /id="row-hero-sms-country"/);
   assert.match(html, /id="row-hero-sms-country-fallback"/);
@@ -74,6 +81,22 @@ test('sidepanel html exposes phone verification toggle and dedicated HeroSMS row
   assert.match(html, /id="row-hero-sms-max-price"/);
   assert.match(html, /id="input-hero-sms-min-price"/);
   assert.match(html, /id="input-hero-sms-max-price"/);
+  assert.match(html, /id="row-five-sim-api-key"/);
+  assert.match(html, /id="input-five-sim-api-key"/);
+  assert.match(html, /id="row-five-sim-country"/);
+  assert.match(html, /id="select-five-sim-country"[^>]*multiple/);
+  assert.match(html, /id="row-five-sim-country-fallback"/);
+  assert.match(html, /id="row-five-sim-operator"/);
+  assert.match(html, /id="input-five-sim-operator"/);
+  assert.match(html, /id="row-five-sim-product"/);
+  assert.match(html, /id="input-five-sim-product"/);
+  assert.match(html, /id="row-nex-sms-api-key"/);
+  assert.match(html, /id="input-nex-sms-api-key"/);
+  assert.match(html, /id="row-nex-sms-country"/);
+  assert.match(html, /id="select-nex-sms-country"[^>]*multiple/);
+  assert.match(html, /id="row-nex-sms-country-fallback"/);
+  assert.match(html, /id="row-nex-sms-service-code"/);
+  assert.match(html, /id="input-nex-sms-service-code"/);
   assert.match(html, /id="row-hero-sms-current-number"/);
   assert.match(html, /id="row-hero-sms-price-tiers"/);
   assert.match(html, /id="row-hero-sms-current-code"/);
@@ -162,15 +185,28 @@ return {
 test('updatePhoneVerificationSettingsUI toggles HeroSMS rows from the sms switch', () => {
   const api = new Function(`
 const phoneVerificationSectionExpanded = true;
+let latestState = {};
 const inputPhoneVerificationEnabled = { checked: false };
 const rowPhoneVerificationEnabled = { style: { display: 'none' } };
 const rowPhoneVerificationFold = { style: { display: 'none' } };
+const rowPhoneSmsProvider = { style: { display: 'none' } };
+const rowPhoneSmsProviderOrder = { style: { display: 'none' } };
+const rowPhoneSmsProviderOrderActions = { style: { display: 'none' } };
+const selectPhoneSmsProvider = { value: 'hero-sms' };
 const btnTogglePhoneVerificationSection = {
   disabled: false,
   textContent: '',
   title: '',
   setAttribute: () => {},
 };
+function resolveNormalizedProviderOrderForRuntime(state = {}) {
+  const rawOrder = Array.isArray(state?.phoneSmsProviderOrder) ? state.phoneSmsProviderOrder : [];
+  if (rawOrder.length) {
+    return rawOrder;
+  }
+  return [String(state?.phoneSmsProvider || selectPhoneSmsProvider.value || 'hero-sms').trim().toLowerCase() || 'hero-sms'];
+}
+function updatePhoneSmsProviderOrderSummary() {}
 const rowHeroSmsPlatform = { style: { display: 'none' } };
 const rowHeroSmsCountry = { style: { display: 'none' } };
 const rowHeroSmsCountryFallback = { style: { display: 'none' } };
@@ -186,12 +222,26 @@ const rowPhoneCodeWaitSeconds = { style: { display: 'none' } };
 const rowPhoneCodeTimeoutWindows = { style: { display: 'none' } };
 const rowPhoneCodePollIntervalSeconds = { style: { display: 'none' } };
 const rowPhoneCodePollMaxRounds = { style: { display: 'none' } };
+const rowFiveSimApiKey = { style: { display: 'none' } };
+const rowFiveSimCountry = { style: { display: 'none' } };
+const rowFiveSimCountryFallback = { style: { display: 'none' } };
+const rowFiveSimOperator = { style: { display: 'none' } };
+const rowFiveSimProduct = { style: { display: 'none' } };
+const rowNexSmsApiKey = { style: { display: 'none' } };
+const rowNexSmsCountry = { style: { display: 'none' } };
+const rowNexSmsCountryFallback = { style: { display: 'none' } };
+const rowNexSmsServiceCode = { style: { display: 'none' } };
 
 ${extractFunction('updatePhoneVerificationSettingsUI')}
 
 return {
+  setLatestState: (state) => { latestState = state || {}; },
   rowPhoneVerificationEnabled,
   rowPhoneVerificationFold,
+  rowPhoneSmsProvider,
+  rowPhoneSmsProviderOrder,
+  rowPhoneSmsProviderOrderActions,
+  selectPhoneSmsProvider,
   btnTogglePhoneVerificationSection,
   inputPhoneVerificationEnabled,
   rowHeroSmsPlatform,
@@ -209,6 +259,15 @@ return {
   rowPhoneCodeTimeoutWindows,
   rowPhoneCodePollIntervalSeconds,
   rowPhoneCodePollMaxRounds,
+  rowFiveSimApiKey,
+  rowFiveSimCountry,
+  rowFiveSimCountryFallback,
+  rowFiveSimOperator,
+  rowFiveSimProduct,
+  rowNexSmsApiKey,
+  rowNexSmsCountry,
+  rowNexSmsCountryFallback,
+  rowNexSmsServiceCode,
   updatePhoneVerificationSettingsUI,
 };
 `)();
@@ -216,6 +275,9 @@ return {
   api.updatePhoneVerificationSettingsUI();
   assert.equal(api.rowPhoneVerificationEnabled.style.display, '');
   assert.equal(api.rowPhoneVerificationFold.style.display, 'none');
+  assert.equal(api.rowPhoneSmsProvider.style.display, 'none');
+  assert.equal(api.rowPhoneSmsProviderOrder.style.display, 'none');
+  assert.equal(api.rowPhoneSmsProviderOrderActions.style.display, 'none');
   assert.equal(api.btnTogglePhoneVerificationSection.disabled, true);
   assert.equal(api.btnTogglePhoneVerificationSection.textContent, '展开设置');
   assert.equal(api.rowHeroSmsPlatform.style.display, 'none');
@@ -233,10 +295,22 @@ return {
   assert.equal(api.rowPhoneCodeTimeoutWindows.style.display, 'none');
   assert.equal(api.rowPhoneCodePollIntervalSeconds.style.display, 'none');
   assert.equal(api.rowPhoneCodePollMaxRounds.style.display, 'none');
+  assert.equal(api.rowFiveSimApiKey.style.display, 'none');
+  assert.equal(api.rowFiveSimCountry.style.display, 'none');
+  assert.equal(api.rowFiveSimCountryFallback.style.display, 'none');
+  assert.equal(api.rowFiveSimOperator.style.display, 'none');
+  assert.equal(api.rowFiveSimProduct.style.display, 'none');
+  assert.equal(api.rowNexSmsApiKey.style.display, 'none');
+  assert.equal(api.rowNexSmsCountry.style.display, 'none');
+  assert.equal(api.rowNexSmsCountryFallback.style.display, 'none');
+  assert.equal(api.rowNexSmsServiceCode.style.display, 'none');
 
   api.inputPhoneVerificationEnabled.checked = true;
   api.updatePhoneVerificationSettingsUI();
   assert.equal(api.rowPhoneVerificationFold.style.display, '');
+  assert.equal(api.rowPhoneSmsProvider.style.display, '');
+  assert.equal(api.rowPhoneSmsProviderOrder.style.display, '');
+  assert.equal(api.rowPhoneSmsProviderOrderActions.style.display, '');
   assert.equal(api.btnTogglePhoneVerificationSection.disabled, false);
   assert.equal(api.btnTogglePhoneVerificationSection.textContent, '收起设置');
   assert.equal(api.rowHeroSmsPlatform.style.display, '');
@@ -254,6 +328,432 @@ return {
   assert.equal(api.rowPhoneCodeTimeoutWindows.style.display, '');
   assert.equal(api.rowPhoneCodePollIntervalSeconds.style.display, '');
   assert.equal(api.rowPhoneCodePollMaxRounds.style.display, '');
+  assert.equal(api.rowFiveSimApiKey.style.display, 'none');
+  assert.equal(api.rowNexSmsApiKey.style.display, 'none');
+
+  api.selectPhoneSmsProvider.value = '5sim';
+  api.setLatestState({ phoneSmsProvider: '5sim', phoneSmsProviderOrder: ['5sim'] });
+  api.updatePhoneVerificationSettingsUI();
+  assert.equal(api.rowHeroSmsCountry.style.display, 'none');
+  assert.equal(api.rowHeroSmsApiKey.style.display, 'none');
+  assert.equal(api.rowFiveSimApiKey.style.display, '');
+  assert.equal(api.rowFiveSimCountry.style.display, '');
+  assert.equal(api.rowFiveSimCountryFallback.style.display, '');
+  assert.equal(api.rowFiveSimOperator.style.display, '');
+  assert.equal(api.rowFiveSimProduct.style.display, '');
+  assert.equal(api.rowNexSmsApiKey.style.display, 'none');
+
+  api.selectPhoneSmsProvider.value = 'nexsms';
+  api.setLatestState({ phoneSmsProvider: 'nexsms', phoneSmsProviderOrder: ['nexsms'] });
+  api.updatePhoneVerificationSettingsUI();
+  assert.equal(api.rowFiveSimApiKey.style.display, 'none');
+  assert.equal(api.rowNexSmsApiKey.style.display, '');
+  assert.equal(api.rowNexSmsCountry.style.display, '');
+  assert.equal(api.rowNexSmsCountryFallback.style.display, '');
+  assert.equal(api.rowNexSmsServiceCode.style.display, '');
+});
+
+test('phone sms provider order menu renders selected providers instead of opening an empty dropdown', () => {
+  const api = new Function(`
+const PHONE_SMS_PROVIDER_HERO = 'hero-sms';
+const PHONE_SMS_PROVIDER_FIVE_SIM = '5sim';
+const PHONE_SMS_PROVIDER_NEXSMS = 'nexsms';
+const DEFAULT_PHONE_SMS_PROVIDER = PHONE_SMS_PROVIDER_HERO;
+const DEFAULT_PHONE_SMS_PROVIDER_ORDER = [
+  PHONE_SMS_PROVIDER_HERO,
+  PHONE_SMS_PROVIDER_FIVE_SIM,
+  PHONE_SMS_PROVIDER_NEXSMS,
+];
+
+class FakeClassList {
+  constructor() {
+    this.values = new Set();
+  }
+  add(...names) {
+    names.forEach((name) => this.values.add(String(name)));
+  }
+  remove(...names) {
+    names.forEach((name) => this.values.delete(String(name)));
+  }
+  toggle(name, force) {
+    if (force === undefined) {
+      if (this.values.has(name)) {
+        this.values.delete(name);
+        return false;
+      }
+      this.values.add(name);
+      return true;
+    }
+    if (force) {
+      this.values.add(name);
+      return true;
+    }
+    this.values.delete(name);
+    return false;
+  }
+  contains(name) {
+    return this.values.has(String(name));
+  }
+}
+
+class FakeElement {
+  constructor(tagName = 'div') {
+    this.tagName = String(tagName || 'div').toUpperCase();
+    this.children = [];
+    this.parentNode = null;
+    this.textContent = '';
+    this.innerHTML = '';
+    this.hidden = false;
+    this.value = '';
+    this.selected = false;
+    this.dataset = {};
+    this.style = {};
+    this.classList = new FakeClassList();
+    this._className = '';
+    Object.defineProperty(this, 'className', {
+      get: () => this._className,
+      set: (value) => {
+        this._className = String(value || '');
+        this.classList = new FakeClassList();
+        this._className
+          .split(/\\s+/)
+          .map((name) => String(name || '').trim())
+          .filter(Boolean)
+          .forEach((name) => this.classList.add(name));
+      },
+    });
+    this.attributes = {};
+    this.listeners = new Map();
+  }
+  appendChild(child) {
+    if (!child) return child;
+    child.parentNode = this;
+    this.children.push(child);
+    return child;
+  }
+  setAttribute(name, value) {
+    this.attributes[name] = String(value);
+  }
+  getAttribute(name) {
+    return Object.prototype.hasOwnProperty.call(this.attributes, name)
+      ? this.attributes[name]
+      : null;
+  }
+  addEventListener(type, handler) {
+    if (!this.listeners.has(type)) {
+      this.listeners.set(type, []);
+    }
+    this.listeners.get(type).push(handler);
+  }
+  querySelectorAll(selector) {
+    if (selector === '.phone-sms-provider-order-menu-item') {
+      return this.children.filter((child) => child.classList.contains('phone-sms-provider-order-menu-item'));
+    }
+    if (selector === '.phone-sms-provider-order-menu-item-badge') {
+      return this.children
+        .flatMap((child) => child.children || [])
+        .filter((child) => child.classList.contains('phone-sms-provider-order-menu-item-badge'));
+    }
+    return [];
+  }
+}
+
+const document = {
+  createElement(tagName) {
+    return new FakeElement(tagName);
+  },
+};
+
+const selectPhoneSmsProvider = { value: '5sim' };
+const selectPhoneSmsProviderOrder = {
+  options: [
+    { value: 'hero-sms', textContent: 'HeroSMS', selected: true },
+    { value: '5sim', textContent: '5sim', selected: true },
+    { value: 'nexsms', textContent: 'NexSMS', selected: false },
+  ],
+};
+const phoneSmsProviderOrderMenu = new FakeElement('div');
+const btnPhoneSmsProviderOrderMenu = { textContent: '', setAttribute() {} };
+const displayPhoneSmsProviderOrder = { textContent: '' };
+let phoneSmsProviderOrderSelection = [];
+
+${extractFunction('normalizePhoneSmsProviderValue')}
+${extractFunction('normalizePhoneSmsProviderOrderValue')}
+${extractFunction('getPhoneSmsProviderLabel')}
+${extractFunction('formatPhoneSmsProviderOrderSummary')}
+${extractFunction('updatePhoneSmsProviderOrderSummary')}
+${extractFunction('renderPhoneSmsProviderOrderMenu')}
+${extractFunction('getSelectedPhoneSmsProvider')}
+${extractFunction('syncPhoneSmsProviderOrderFromSelect')}
+${extractFunction('applyPhoneSmsProviderOrderSelection')}
+
+return {
+  btnPhoneSmsProviderOrderMenu,
+  displayPhoneSmsProviderOrder,
+  phoneSmsProviderOrderMenu,
+  applyPhoneSmsProviderOrderSelection,
+};
+`)();
+
+  api.applyPhoneSmsProviderOrderSelection(['5sim', 'hero-sms'], {
+    ensureDefault: true,
+    syncProvider: false,
+  });
+
+  const items = api.phoneSmsProviderOrderMenu.querySelectorAll('.phone-sms-provider-order-menu-item');
+  assert.equal(items.length, 3);
+  assert.equal(items[0].children[0].textContent, 'NexSMS');
+  assert.equal(items[0].children[1].textContent, '');
+  assert.equal(items[1].children[0].textContent, '5sim');
+  assert.equal(items[1].children[1].textContent, '✓ 1');
+  assert.equal(items[2].children[0].textContent, 'HeroSMS');
+  assert.equal(items[2].children[1].textContent, '✓ 2');
+  assert.equal(api.btnPhoneSmsProviderOrderMenu.textContent, '5sim / HeroSMS (2/3)');
+  assert.equal(api.displayPhoneSmsProviderOrder.textContent, '1. 5sim → 2. HeroSMS');
+});
+
+test('phone sms provider order menu keeps selected providers at the end, shows checkmark order, and closes on outside click', () => {
+  const api = new Function(`
+const PHONE_SMS_PROVIDER_HERO = 'hero-sms';
+const PHONE_SMS_PROVIDER_FIVE_SIM = '5sim';
+const PHONE_SMS_PROVIDER_NEXSMS = 'nexsms';
+const DEFAULT_PHONE_SMS_PROVIDER = PHONE_SMS_PROVIDER_HERO;
+const DEFAULT_PHONE_SMS_PROVIDER_ORDER = [
+  PHONE_SMS_PROVIDER_HERO,
+  PHONE_SMS_PROVIDER_FIVE_SIM,
+  PHONE_SMS_PROVIDER_NEXSMS,
+];
+
+class FakeClassList {
+  constructor() {
+    this.values = new Set();
+  }
+  add(...names) {
+    names.forEach((name) => this.values.add(String(name)));
+  }
+  remove(...names) {
+    names.forEach((name) => this.values.delete(String(name)));
+  }
+  toggle(name, force) {
+    if (force === undefined) {
+      if (this.values.has(name)) {
+        this.values.delete(name);
+        return false;
+      }
+      this.values.add(name);
+      return true;
+    }
+    if (force) {
+      this.values.add(name);
+      return true;
+    }
+    this.values.delete(name);
+    return false;
+  }
+  contains(name) {
+    return this.values.has(String(name));
+  }
+}
+
+class FakeElement {
+  constructor(tagName = 'div') {
+    this.tagName = String(tagName || 'div').toUpperCase();
+    this.children = [];
+    this.parentNode = null;
+    this.textContent = '';
+    this.innerHTML = '';
+    this.hidden = false;
+    this.value = '';
+    this.selected = false;
+    this.dataset = {};
+    this.style = {};
+    this.classList = new FakeClassList();
+    this._className = '';
+    Object.defineProperty(this, 'className', {
+      get: () => this._className,
+      set: (value) => {
+        this._className = String(value || '');
+        this.classList = new FakeClassList();
+        this._className
+          .split(/\\s+/)
+          .map((name) => String(name || '').trim())
+          .filter(Boolean)
+          .forEach((name) => this.classList.add(name));
+      },
+    });
+    this.attributes = {};
+    this.listeners = new Map();
+  }
+  appendChild(child) {
+    if (!child) return child;
+    child.parentNode = this;
+    this.children.push(child);
+    return child;
+  }
+  setAttribute(name, value) {
+    this.attributes[name] = String(value);
+  }
+  getAttribute(name) {
+    return Object.prototype.hasOwnProperty.call(this.attributes, name)
+      ? this.attributes[name]
+      : null;
+  }
+  addEventListener(type, handler) {
+    if (!this.listeners.has(type)) {
+      this.listeners.set(type, []);
+    }
+    this.listeners.get(type).push(handler);
+  }
+  contains(target) {
+    if (!target) return false;
+    if (target === this) return true;
+    return this.children.some((child) => typeof child.contains === 'function' && child.contains(target));
+  }
+  querySelectorAll(selector) {
+    if (selector === '.phone-sms-provider-order-menu-item') {
+      return this.children.filter((child) => child.classList.contains('phone-sms-provider-order-menu-item'));
+    }
+    return [];
+  }
+}
+
+const documentListeners = new Map();
+const document = {
+  createElement(tagName) {
+    return new FakeElement(tagName);
+  },
+  addEventListener(type, handler) {
+    if (!documentListeners.has(type)) {
+      documentListeners.set(type, []);
+    }
+    documentListeners.get(type).push(handler);
+  },
+};
+
+const selectPhoneSmsProvider = { value: 'hero-sms' };
+const selectPhoneSmsProviderOrder = {
+  options: [
+    { value: 'hero-sms', textContent: 'HeroSMS', selected: true },
+    { value: '5sim', textContent: '5sim', selected: false },
+    { value: 'nexsms', textContent: 'NexSMS', selected: true },
+  ],
+};
+const phoneSmsProviderOrderMenuShell = new FakeElement('div');
+const phoneSmsProviderOrderMenu = new FakeElement('div');
+phoneSmsProviderOrderMenuShell.appendChild(phoneSmsProviderOrderMenu);
+const btnPhoneSmsProviderOrderMenu = new FakeElement('button');
+btnPhoneSmsProviderOrderMenu.setAttribute('aria-expanded', 'false');
+phoneSmsProviderOrderMenuShell.appendChild(btnPhoneSmsProviderOrderMenu);
+const outsideTarget = new FakeElement('div');
+const displayPhoneSmsProviderOrder = { textContent: '' };
+let phoneSmsProviderOrderSelection = [];
+let configMenuOpen = false;
+const configMenuShell = { contains: () => false };
+const heroSmsCountryMenuShell = { contains: () => false };
+const fiveSimCountryMenuShell = { contains: () => false };
+const nexSmsCountryMenuShell = { contains: () => false };
+const btnHeroSmsCountryMenu = { getAttribute: () => 'false' };
+const btnFiveSimCountryMenu = { getAttribute: () => 'false' };
+const btnNexSmsCountryMenu = { getAttribute: () => 'false' };
+function closeConfigMenu() {}
+function setHeroSmsCountryMenuOpen() {}
+function setFiveSimCountryMenuOpen() {}
+function setNexSmsCountryMenuOpen() {}
+
+${extractFunction('normalizePhoneSmsProviderValue')}
+${extractFunction('normalizePhoneSmsProviderOrderValue')}
+${extractFunction('getPhoneSmsProviderLabel')}
+${extractFunction('formatPhoneSmsProviderOrderSummary')}
+${extractFunction('updatePhoneSmsProviderOrderSummary')}
+${extractFunction('renderPhoneSmsProviderOrderMenu')}
+${extractFunction('getSelectedPhoneSmsProvider')}
+${extractFunction('syncPhoneSmsProviderOrderFromSelect')}
+${extractFunction('applyPhoneSmsProviderOrderSelection')}
+
+function setPhoneSmsProviderOrderMenuOpen(open) {
+  const nextOpen = Boolean(open);
+  btnPhoneSmsProviderOrderMenu.setAttribute('aria-expanded', String(nextOpen));
+  phoneSmsProviderOrderMenu.hidden = !nextOpen;
+}
+
+document.addEventListener('click', (event) => {
+  const clickedInsideConfigMenu = Boolean(configMenuShell?.contains(event.target));
+  const clickedInsideCountryMenu = Boolean(heroSmsCountryMenuShell?.contains(event.target));
+  const clickedInsideFiveSimCountryMenu = Boolean(fiveSimCountryMenuShell?.contains(event.target));
+  const clickedInsideNexSmsCountryMenu = Boolean(nexSmsCountryMenuShell?.contains(event.target));
+  const clickedInsideProviderOrderMenu = Boolean(phoneSmsProviderOrderMenuShell?.contains(event.target));
+
+  if (configMenuOpen && !clickedInsideConfigMenu) {
+    closeConfigMenu();
+  }
+
+  const countryMenuOpen = btnHeroSmsCountryMenu?.getAttribute('aria-expanded') === 'true';
+  if (countryMenuOpen && !clickedInsideCountryMenu) {
+    setHeroSmsCountryMenuOpen(false);
+  }
+  const fiveSimCountryMenuOpen = btnFiveSimCountryMenu?.getAttribute('aria-expanded') === 'true';
+  if (fiveSimCountryMenuOpen && !clickedInsideFiveSimCountryMenu) {
+    setFiveSimCountryMenuOpen(false);
+  }
+  const nexSmsCountryMenuOpen = btnNexSmsCountryMenu?.getAttribute('aria-expanded') === 'true';
+  if (nexSmsCountryMenuOpen && !clickedInsideNexSmsCountryMenu) {
+    setNexSmsCountryMenuOpen(false);
+  }
+  const providerOrderMenuOpen = btnPhoneSmsProviderOrderMenu?.getAttribute('aria-expanded') === 'true';
+  if (providerOrderMenuOpen && !clickedInsideProviderOrderMenu) {
+    setPhoneSmsProviderOrderMenuOpen(false);
+  }
+});
+
+return {
+  btnPhoneSmsProviderOrderMenu,
+  outsideTarget,
+  phoneSmsProviderOrderMenu,
+  displayPhoneSmsProviderOrder,
+  applyPhoneSmsProviderOrderSelection,
+  setPhoneSmsProviderOrderMenuOpen,
+  fireDocumentClick(target) {
+    const listeners = documentListeners.get('click') || [];
+    listeners.forEach((listener) => listener({ target }));
+  },
+};
+`)();
+
+  api.applyPhoneSmsProviderOrderSelection(['nexsms', 'hero-sms'], {
+    ensureDefault: false,
+    syncProvider: false,
+  });
+
+  const items = api.phoneSmsProviderOrderMenu.querySelectorAll('.phone-sms-provider-order-menu-item');
+  assert.equal(items.length, 3);
+  assert.equal(items[0].children[0].textContent, '5sim');
+  assert.equal(items[0].children[1].textContent, '');
+  assert.equal(items[1].children[0].textContent, 'NexSMS');
+  assert.equal(items[1].children[1].textContent, '✓ 1');
+  assert.equal(items[2].children[0].textContent, 'HeroSMS');
+  assert.equal(items[2].children[1].textContent, '✓ 2');
+
+  api.setPhoneSmsProviderOrderMenuOpen(true);
+  assert.equal(api.btnPhoneSmsProviderOrderMenu.getAttribute('aria-expanded'), 'true');
+
+  api.fireDocumentClick(api.outsideTarget);
+  assert.equal(api.btnPhoneSmsProviderOrderMenu.getAttribute('aria-expanded'), 'false');
+});
+
+test('phone sms provider order menu reuses full-width country menu layout so the badge can align to the far right', () => {
+  const source = sidepanelSource;
+  assert.match(
+    source,
+    /item\.className\s*=\s*['"]header-dropdown-item hero-sms-country-menu-item phone-sms-provider-order-menu-item['"]/
+  );
+  assert.match(
+    source,
+    /label(?:Text)?\.className\s*=\s*['"]hero-sms-country-menu-item-label phone-sms-provider-order-menu-item-label['"]/
+  );
+  assert.match(
+    source,
+    /badge\.className\s*=\s*['"]hero-sms-country-menu-item-badge phone-sms-provider-order-menu-item-badge['"]/
+  );
 });
 
 test('collectSettingsPayload keeps local helper sync enabled while persisting sms toggle state', () => {
@@ -305,6 +805,12 @@ const inputAutoDelayMinutes = { value: '30' };
 const inputAutoStepDelaySeconds = { value: '' };
 const inputPhoneVerificationEnabled = { checked: true };
 const inputVerificationResendCount = { value: '4' };
+const selectPhoneSmsProvider = { value: '5sim' };
+const inputFiveSimApiKey = { value: 'five-sim-key' };
+const inputFiveSimOperator = { value: 'any' };
+const inputFiveSimProduct = { value: 'openai' };
+const inputNexSmsApiKey = { value: 'nex-key' };
+const inputNexSmsServiceCode = { value: 'ot' };
 const inputHeroSmsApiKey = { value: 'demo-key' };
 const inputHeroSmsReuseEnabled = { checked: true };
 const selectHeroSmsAcquirePriority = { value: 'price' };
@@ -339,11 +845,51 @@ const PHONE_REPLACEMENT_LIMIT_MIN = 1;
 const PHONE_REPLACEMENT_LIMIT_MAX = 20;
 const DEFAULT_HERO_SMS_COUNTRY_ID = 52;
 const DEFAULT_HERO_SMS_COUNTRY_LABEL = 'Thailand';
+const PHONE_SMS_PROVIDER_HERO = 'hero-sms';
+const PHONE_SMS_PROVIDER_FIVE_SIM = '5sim';
+const PHONE_SMS_PROVIDER_NEXSMS = 'nexsms';
 const selectHeroSmsCountry = {
   value: '52',
   selectedIndex: 0,
   options: [{ textContent: 'Thailand' }],
 };
+function normalizePhoneSmsProviderValue(value = '') {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === '5sim') return '5sim';
+  if (normalized === 'nexsms') return 'nexsms';
+  return 'hero-sms';
+}
+function normalizePhoneSmsProviderOrderValue(value = [], fallbackOrder = []) {
+  const source = Array.isArray(value) ? value : [];
+  if (source.length) {
+    return source.map((entry) => normalizePhoneSmsProviderValue(entry)).slice(0, 3);
+  }
+  return Array.isArray(fallbackOrder)
+    ? fallbackOrder.map((entry) => normalizePhoneSmsProviderValue(entry)).slice(0, 3)
+    : [];
+}
+function getSelectedPhoneSmsProvider() { return normalizePhoneSmsProviderValue(selectPhoneSmsProvider.value); }
+function getSelectedPhoneSmsProviderOrder() { return ['5sim', 'hero-sms']; }
+function normalizeFiveSimCountryOrderValue(value = []) {
+  return Array.isArray(value)
+    ? value.map((entry) => String(entry || '').trim().toLowerCase()).filter(Boolean).slice(0, 10)
+    : [];
+}
+function getSelectedFiveSimCountries() {
+  return [
+    { code: 'thailand', label: 'Thailand' },
+    { code: 'england', label: 'England' },
+  ];
+}
+function normalizeFiveSimOperatorValue(value = '') {
+  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '') || 'any';
+}
+function normalizeFiveSimProductValue(value = '') {
+  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '') || 'openai';
+}
+function normalizeNexSmsServiceCodeValue(value = '') {
+  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '') || 'ot';
+}
 function getCloudflareDomainsFromState() { return { domains: [], activeDomain: '' }; }
 function normalizeCloudflareDomainValue(value) { return String(value || '').trim(); }
 function getCloudflareTempEmailDomainsFromState() { return { domains: [], activeDomain: '' }; }
@@ -386,7 +932,15 @@ return { collectSettingsPayload };
   assert.equal(payload.accountRunHistoryTextEnabled, true);
   assert.equal(payload.accountRunHistoryHelperBaseUrl, 'http://127.0.0.1:17373');
   assert.equal(payload.gptOnlyModeEnabled, true);
+  assert.equal(payload.phoneSmsProvider, '5sim');
+  assert.deepStrictEqual(payload.phoneSmsProviderOrder, ['5sim', 'hero-sms']);
   assert.equal(payload.heroSmsApiKey, 'demo-key');
+  assert.equal(payload.fiveSimApiKey, 'five-sim-key');
+  assert.deepStrictEqual(payload.fiveSimCountryOrder, ['thailand', 'england']);
+  assert.equal(payload.fiveSimOperator, 'any');
+  assert.equal(payload.fiveSimProduct, 'openai');
+  assert.equal(payload.nexSmsApiKey, 'nex-key');
+  assert.equal(payload.nexSmsServiceCode, 'ot');
   assert.equal(payload.heroSmsReuseEnabled, true);
   assert.equal(payload.heroSmsAcquirePriority, 'price');
   assert.equal(payload.heroSmsMinPrice, '0.05');

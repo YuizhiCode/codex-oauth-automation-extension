@@ -32,6 +32,578 @@ function buildHeroSmsStatusV2Payload({ smsCode = '', smsText = '', callCode = ''
   });
 }
 
+test('phone verification helper requests a 5sim number with configured country/operator/product', async () => {
+  const requests = [];
+  const helpers = api.createPhoneVerificationHelpers({
+    addLog: async () => {},
+    ensureStep8SignupPageReady: async () => {},
+    fetchImpl: async (url, options = {}) => {
+      requests.push({ url: new URL(url), options });
+      return {
+        ok: true,
+        json: async () => ({
+          id: '5sim-123456',
+          phone: '+66881234567',
+          status: 'PENDING',
+        }),
+        text: async () => JSON.stringify({
+          id: '5sim-123456',
+          phone: '+66881234567',
+          status: 'PENDING',
+        }),
+      };
+    },
+    getState: async () => ({
+      phoneSmsProvider: '5sim',
+      fiveSimApiKey: 'five-sim-key',
+      fiveSimCountryOrder: ['thailand'],
+      fiveSimOperator: 'any',
+      fiveSimProduct: 'openai',
+    }),
+    sendToContentScriptResilient: async () => ({}),
+    setState: async () => {},
+    sleepWithStop: async () => {},
+    throwIfStopped: () => {},
+  });
+
+  const activation = await helpers.requestPhoneActivation({
+    phoneSmsProvider: '5sim',
+    fiveSimApiKey: 'five-sim-key',
+    fiveSimCountryOrder: ['thailand'],
+    fiveSimOperator: 'any',
+    fiveSimProduct: 'openai',
+  });
+
+  assert.deepStrictEqual(activation, {
+    activationId: '5sim-123456',
+    phoneNumber: '66881234567',
+    provider: '5sim',
+    serviceCode: 'openai',
+    countryId: 'thailand',
+    successfulUses: 0,
+    maxUses: 3,
+  });
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0].url.origin, 'https://5sim.net');
+  assert.equal(requests[0].url.pathname, '/v1/guest/prices');
+  assert.equal(requests[0].url.searchParams.get('country'), 'thailand');
+  assert.equal(requests[0].url.searchParams.get('product'), 'openai');
+  assert.equal(requests[0].options.method, 'GET');
+  assert.equal(requests[0].options.headers.Authorization, 'Bearer five-sim-key');
+  assert.equal(requests[1].url.pathname, '/v1/user/buy/activation/thailand/any/openai');
+  assert.equal(requests[1].options.method, 'GET');
+  assert.equal(requests[1].options.headers.Authorization, 'Bearer five-sim-key');
+});
+
+test('phone verification helper polls NexSMS messages until it extracts the sms code', async () => {
+  const requests = [];
+  let pollCount = 0;
+  const helpers = api.createPhoneVerificationHelpers({
+    addLog: async () => {},
+    ensureStep8SignupPageReady: async () => {},
+    fetchImpl: async (url, options = {}) => {
+      requests.push({ url: new URL(url), options });
+      pollCount += 1;
+      const payload = pollCount === 1
+        ? { success: false, message: 'pending' }
+        : { success: true, data: { text: 'Your OpenAI code is 654321' } };
+      return {
+        ok: true,
+        json: async () => payload,
+        text: async () => JSON.stringify(payload),
+      };
+    },
+    getState: async () => ({
+      phoneSmsProvider: 'nexsms',
+      nexSmsApiKey: 'nex-key',
+      nexSmsCountryOrder: [1],
+      nexSmsServiceCode: 'ot',
+    }),
+    sendToContentScriptResilient: async () => ({}),
+    setState: async () => {},
+    sleepWithStop: async () => {},
+    throwIfStopped: () => {},
+  });
+
+  const code = await helpers.pollPhoneActivationCode(
+    {
+      phoneSmsProvider: 'nexsms',
+      nexSmsApiKey: 'nex-key',
+      nexSmsCountryOrder: [1],
+      nexSmsServiceCode: 'ot',
+    },
+    {
+      activationId: 'nex-123',
+      phoneNumber: '66881122334',
+      provider: 'nexsms',
+      serviceCode: 'ot',
+      countryId: 1,
+    },
+    {
+      timeoutMs: 5000,
+      intervalMs: 1,
+      maxRounds: 3,
+    }
+  );
+
+  assert.equal(code, '654321');
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0].url.origin, 'https://api.nexsms.net');
+  assert.equal(requests[0].url.pathname, '/api/sms/messages');
+  assert.equal(requests[0].url.searchParams.get('phoneNumber'), '66881122334');
+  assert.equal(requests[0].url.searchParams.get('format'), 'json_latest');
+  assert.equal(requests[0].options.headers.Authorization, 'Bearer nex-key');
+});
+
+test('phone verification helper acquires a number from 5sim with fallback countries', async () => {
+  const requests = [];
+  const helpers = api.createPhoneVerificationHelpers({
+    addLog: async () => {},
+    ensureStep8SignupPageReady: async () => {},
+    fetchImpl: async (url, options = {}) => {
+      const parsedUrl = new URL(url);
+      requests.push({
+        pathname: parsedUrl.pathname,
+        search: parsedUrl.searchParams,
+        headers: options?.headers || {},
+      });
+
+      if (parsedUrl.pathname === '/v1/guest/prices') {
+        const country = parsedUrl.searchParams.get('country');
+        if (country === 'thailand') {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({
+              openai: {
+                thailand: {
+                  any: {
+                    cost: 0.08,
+                    count: 12,
+                  },
+                },
+              },
+            }),
+          };
+        }
+        if (country === 'england') {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({
+              openai: {
+                england: {
+                  any: {
+                    cost: 0.05,
+                    count: 8,
+                  },
+                },
+              },
+            }),
+          };
+        }
+      }
+
+      if (parsedUrl.pathname === '/v1/user/buy/activation/thailand/any/openai') {
+        return {
+          ok: false,
+          status: 400,
+          text: async () => JSON.stringify({ message: 'no free phones' }),
+        };
+      }
+
+      if (parsedUrl.pathname === '/v1/user/buy/activation/england/any/openai') {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({
+            id: 9876543,
+            phone: '+447911123456',
+            country: 'england',
+            country_name: 'England',
+            product: 'openai',
+          }),
+        };
+      }
+
+      throw new Error(`Unexpected 5sim request: ${parsedUrl.pathname}`);
+    },
+    getState: async () => ({
+      phoneSmsProvider: '5sim',
+      fiveSimApiKey: 'five-token',
+      fiveSimCountryOrder: ['thailand', 'england'],
+      fiveSimOperator: 'any',
+      fiveSimProduct: 'openai',
+      heroSmsMaxPrice: '0.1',
+      heroSmsActivationRetryRounds: 1,
+    }),
+    sendToContentScriptResilient: async () => ({}),
+    setState: async () => {},
+    sleepWithStop: async () => {},
+    throwIfStopped: () => {},
+  });
+
+  const activation = await helpers.requestPhoneActivation({
+    phoneSmsProvider: '5sim',
+    fiveSimApiKey: 'five-token',
+    fiveSimCountryOrder: ['thailand', 'england'],
+    fiveSimOperator: 'any',
+    fiveSimProduct: 'openai',
+    heroSmsMaxPrice: '0.1',
+    heroSmsActivationRetryRounds: 1,
+  });
+
+  assert.deepStrictEqual(activation, {
+    activationId: '9876543',
+    phoneNumber: '447911123456',
+    provider: '5sim',
+    serviceCode: 'openai',
+    countryId: 'england',
+    countryLabel: 'England',
+    successfulUses: 0,
+    maxUses: 3,
+  });
+
+  const buyPaths = requests
+    .filter((entry) => entry.pathname.startsWith('/v1/user/buy/activation/'))
+    .map((entry) => entry.pathname);
+  assert.deepStrictEqual(buyPaths, [
+    '/v1/user/buy/activation/thailand/any/openai',
+    '/v1/user/buy/activation/england/any/openai',
+  ]);
+});
+
+test('phone verification helper reuses 5sim number via product-plus-number endpoint', async () => {
+  const requests = [];
+  const helpers = api.createPhoneVerificationHelpers({
+    addLog: async () => {},
+    ensureStep8SignupPageReady: async () => {},
+    fetchImpl: async (url) => {
+      const parsedUrl = new URL(url);
+      requests.push(parsedUrl.pathname);
+      if (parsedUrl.pathname !== '/v1/user/reuse/openai/447911123456') {
+        throw new Error(`Unexpected 5sim request: ${parsedUrl.pathname}`);
+      }
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({
+          id: 700002,
+          phone: '+44 7911-123-456',
+          country: 'england',
+          country_name: 'England',
+          product: 'openai',
+        }),
+      };
+    },
+    getState: async () => ({
+      phoneSmsProvider: '5sim',
+      fiveSimApiKey: 'five-token',
+      fiveSimCountryOrder: ['england'],
+      fiveSimOperator: 'any',
+      fiveSimProduct: 'openai',
+    }),
+    sendToContentScriptResilient: async () => ({}),
+    setState: async () => {},
+    sleepWithStop: async () => {},
+    throwIfStopped: () => {},
+  });
+
+  const nextActivation = await helpers.reactivatePhoneActivation(
+    {
+      phoneSmsProvider: '5sim',
+      fiveSimApiKey: 'five-token',
+      fiveSimCountryOrder: ['england'],
+      fiveSimOperator: 'any',
+      fiveSimProduct: 'openai',
+    },
+    {
+      activationId: '600001',
+      phoneNumber: '+44 7911-123-456',
+      provider: '5sim',
+      serviceCode: 'openai',
+      countryId: 'england',
+      maxUses: 1,
+      successfulUses: 0,
+    }
+  );
+
+  assert.deepStrictEqual(nextActivation, {
+    activationId: '700002',
+    phoneNumber: '447911123456',
+    provider: '5sim',
+    serviceCode: 'openai',
+    countryId: 'england',
+    countryLabel: 'England',
+    successfulUses: 0,
+    maxUses: 1,
+  });
+  assert.deepStrictEqual(requests, ['/v1/user/reuse/openai/447911123456']);
+});
+
+test('phone verification helper acquires a number from NexSMS with ordered fallback countries', async () => {
+  const requests = [];
+  const helpers = api.createPhoneVerificationHelpers({
+    addLog: async () => {},
+    ensureStep8SignupPageReady: async () => {},
+    fetchImpl: async (url, options = {}) => {
+      const parsedUrl = new URL(url);
+      const method = String(options?.method || 'GET').toUpperCase();
+      const body = options?.body ? JSON.parse(options.body) : null;
+      requests.push({
+        pathname: parsedUrl.pathname,
+        search: parsedUrl.searchParams,
+        method,
+        body,
+        headers: options?.headers || {},
+      });
+
+      if (parsedUrl.pathname === '/api/getCountryByService') {
+        const countryId = Number(parsedUrl.searchParams.get('countryId'));
+        if (countryId === 1) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({
+              code: 0,
+              data: {
+                countryId: 1,
+                countryName: 'Ukraine',
+                minPrice: 0.06,
+                priceMap: { '0.06': 1 },
+              },
+            }),
+          };
+        }
+        if (countryId === 6) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({
+              code: 0,
+              data: {
+                countryId: 6,
+                countryName: 'Indonesia',
+                minPrice: 0.05,
+                priceMap: { '0.05': 2 },
+              },
+            }),
+          };
+        }
+      }
+
+      if (parsedUrl.pathname === '/api/order/purchase') {
+        if (body?.countryId === 1) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({
+              code: 1001,
+              msg: 'NO_NUMBERS',
+            }),
+          };
+        }
+        if (body?.countryId === 6) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({
+              code: 0,
+              data: {
+                countryId: 6,
+                countryName: 'Indonesia',
+                serviceCode: 'ot',
+                phoneNumbers: ['+6281234567890'],
+              },
+            }),
+          };
+        }
+      }
+
+      throw new Error(`Unexpected NexSMS request: ${parsedUrl.pathname}`);
+    },
+    getState: async () => ({
+      phoneSmsProvider: 'nexsms',
+      nexSmsApiKey: 'nex-key',
+      nexSmsCountryOrder: [1, 6],
+      nexSmsServiceCode: 'ot',
+      heroSmsActivationRetryRounds: 1,
+    }),
+    sendToContentScriptResilient: async () => ({}),
+    setState: async () => {},
+    sleepWithStop: async () => {},
+    throwIfStopped: () => {},
+  });
+
+  const activation = await helpers.requestPhoneActivation({
+    phoneSmsProvider: 'nexsms',
+    nexSmsApiKey: 'nex-key',
+    nexSmsCountryOrder: [1, 6],
+    nexSmsServiceCode: 'ot',
+    heroSmsActivationRetryRounds: 1,
+  });
+
+  assert.deepStrictEqual(activation, {
+    activationId: '6281234567890',
+    phoneNumber: '6281234567890',
+    provider: 'nexsms',
+    serviceCode: 'ot',
+    countryId: 6,
+    countryLabel: 'Indonesia',
+    successfulUses: 0,
+    maxUses: 1,
+  });
+  assert.equal(requests[0].pathname, '/api/getCountryByService');
+  assert.equal(requests[0].search.get('apiKey'), 'nex-key');
+  assert.equal(requests[0].search.get('serviceCode'), 'ot');
+  assert.equal(requests[0].search.get('countryId'), '1');
+  assert.equal(requests[1].pathname, '/api/order/purchase');
+  assert.equal(requests[1].method, 'POST');
+  assert.equal(requests[1].body?.countryId, 1);
+  assert.equal(requests[2].pathname, '/api/getCountryByService');
+  assert.equal(requests[2].search.get('countryId'), '6');
+  assert.equal(requests[3].pathname, '/api/order/purchase');
+  assert.equal(requests[3].body?.countryId, 6);
+});
+
+test('phone verification helper skips page resend for 5sim timeouts and rotates number directly', async () => {
+  const requests = [];
+  const messages = [];
+  let currentState = {
+    phoneSmsProvider: '5sim',
+    fiveSimApiKey: 'five-token',
+    fiveSimCountryOrder: ['indonesia'],
+    fiveSimOperator: 'any',
+    fiveSimProduct: 'openai',
+    verificationResendCount: 0,
+    phoneVerificationReplacementLimit: 2,
+    phoneCodeWaitSeconds: 60,
+    phoneCodeTimeoutWindows: 2,
+    phoneCodePollIntervalSeconds: 1,
+    phoneCodePollMaxRounds: 1,
+    heroSmsActivationRetryRounds: 1,
+    currentPhoneActivation: null,
+    reusablePhoneActivation: null,
+  };
+
+  const numbers = [
+    { activationId: '500001', phoneNumber: '+628111111111' },
+    { activationId: '500002', phoneNumber: '+628222222222' },
+  ];
+  let numberIndex = 0;
+
+  const helpers = api.createPhoneVerificationHelpers({
+    addLog: async () => {},
+    ensureStep8SignupPageReady: async () => {},
+    fetchImpl: async (url) => {
+      const parsedUrl = new URL(url);
+      requests.push(parsedUrl.pathname);
+      if (parsedUrl.pathname === '/v1/guest/prices') {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({
+            openai: {
+              indonesia: {
+                any: {
+                  cost: 0.08,
+                  count: 12,
+                },
+              },
+            },
+          }),
+        };
+      }
+      if (parsedUrl.pathname === '/v1/user/buy/activation/indonesia/any/openai') {
+        const next = numbers[Math.min(numberIndex, numbers.length - 1)];
+        numberIndex += 1;
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({
+            id: next.activationId,
+            phone: next.phoneNumber,
+            country: 'indonesia',
+            country_name: 'Indonesia',
+            product: 'openai',
+          }),
+        };
+      }
+      if (parsedUrl.pathname === '/v1/user/check/500001') {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ status: 'PENDING', sms: [] }),
+        };
+      }
+      if (parsedUrl.pathname === '/v1/user/check/500002') {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({
+            status: 'RECEIVED',
+            sms: [{ text: 'Your OpenAI code is 556677' }],
+          }),
+        };
+      }
+      throw new Error(`Unexpected 5sim request: ${parsedUrl.pathname}`);
+    },
+    getOAuthFlowStepTimeoutMs: async (defaultTimeoutMs) => defaultTimeoutMs,
+    getState: async () => ({ ...currentState }),
+    sendToContentScriptResilient: async (_source, message) => {
+      messages.push(message.type);
+      if (message.type === 'SUBMIT_PHONE_NUMBER') {
+        return {
+          phoneVerificationPage: true,
+          url: 'https://auth.openai.com/phone-verification',
+        };
+      }
+      if (message.type === 'RETURN_TO_ADD_PHONE') {
+        return {
+          addPhonePage: true,
+          phoneVerificationPage: false,
+          url: 'https://auth.openai.com/add-phone',
+        };
+      }
+      if (message.type === 'SUBMIT_PHONE_VERIFICATION_CODE') {
+        return {
+          success: true,
+          consentReady: true,
+          url: 'https://auth.openai.com/authorize',
+        };
+      }
+      if (message.type === 'RESEND_PHONE_VERIFICATION_CODE') {
+        throw new Error('5sim flow should not trigger page resend.');
+      }
+      throw new Error(`Unexpected content-script message: ${message.type}`);
+    },
+    setState: async (updates) => {
+      currentState = { ...currentState, ...updates };
+    },
+    sleepWithStop: async () => {},
+    throwIfStopped: () => {},
+  });
+
+  const result = await helpers.completePhoneVerificationFlow(1, {
+    addPhonePage: true,
+    phoneVerificationPage: false,
+    url: 'https://auth.openai.com/add-phone',
+  });
+
+  assert.deepStrictEqual(result, {
+    success: true,
+    consentReady: true,
+    url: 'https://auth.openai.com/authorize',
+  });
+  assert.equal(messages.includes('RESEND_PHONE_VERIFICATION_CODE'), false);
+  assert.equal(messages.filter((type) => type === 'SUBMIT_PHONE_NUMBER').length, 2);
+  assert.equal(
+    requests.filter((pathname) => pathname === '/v1/user/check/500001').length,
+    2,
+    'first 5sim number should be polled across both timeout windows before replacement'
+  );
+});
+
 test('phone verification helper requests HeroSMS numbers with fixed OpenAI and Thailand parameters', async () => {
   const requests = [];
   const helpers = api.createPhoneVerificationHelpers({
