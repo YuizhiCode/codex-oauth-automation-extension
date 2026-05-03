@@ -177,6 +177,8 @@ const inputCodex2ApiAdminKey = document.getElementById('input-codex2api-admin-ke
 const rowCustomPassword = document.getElementById('row-custom-password');
 const rowPlusMode = document.getElementById('row-plus-mode');
 const inputPlusModeEnabled = document.getElementById('input-plus-mode-enabled');
+const rowGptOnlyMode = document.getElementById('row-gpt-only-mode');
+const inputGptOnlyModeEnabled = document.getElementById('input-gpt-only-mode-enabled');
 const rowPayPalAccount = document.getElementById('row-paypal-account');
 const selectPayPalAccount = document.getElementById('select-paypal-account');
 const btnAddPayPalAccount = document.getElementById('btn-add-paypal-account');
@@ -385,7 +387,10 @@ let registeredAccountPoolSearchKeyword = '';
 let registeredAccountPoolCurrentPage = 1;
 let registeredAccountPoolPageSize = DEFAULT_REGISTERED_ACCOUNT_POOL_PAGE_SIZE;
 let registeredAccountPoolSelectedEmails = new Set();
-let stepDefinitions = getStepDefinitionsForMode(false);
+let stepDefinitions = getStepDefinitionsForMode({
+  plusModeEnabled: false,
+  gptOnlyModeEnabled: false,
+});
 let STEP_IDS = stepDefinitions.map((step) => Number(step.id)).filter(Number.isFinite);
 let STEP_DEFAULT_STATUSES = Object.fromEntries(STEP_IDS.map((stepId) => [stepId, 'pending']));
 let SKIPPABLE_STEPS = new Set(STEP_IDS);
@@ -482,7 +487,10 @@ const SETTINGS_SECTION_EXPANDED_STORAGE_KEY = 'multipage-settings-section-expand
 const PHONE_VERIFICATION_SECTION_EXPANDED_STORAGE_KEY = 'multipage-phone-verification-section-expanded';
 
 function getStepDefinitionsForMode(plusModeEnabled = false) {
-  return (window.MultiPageStepDefinitions?.getSteps?.({ plusModeEnabled }) || [])
+  const options = typeof plusModeEnabled === 'object' && plusModeEnabled !== null
+    ? plusModeEnabled
+    : { plusModeEnabled: Boolean(plusModeEnabled) };
+  return (window.MultiPageStepDefinitions?.getSteps?.(options) || [])
     .sort((left, right) => {
       const leftOrder = Number.isFinite(left.order) ? left.order : left.id;
       const rightOrder = Number.isFinite(right.order) ? right.order : right.id;
@@ -491,9 +499,15 @@ function getStepDefinitionsForMode(plusModeEnabled = false) {
     });
 }
 
-function rebuildStepDefinitionState(plusModeEnabled = false) {
-  currentPlusModeEnabled = Boolean(plusModeEnabled);
-  stepDefinitions = getStepDefinitionsForMode(currentPlusModeEnabled);
+function rebuildStepDefinitionState(modeOptions = {}) {
+  const normalizedModeOptions = typeof modeOptions === 'object' && modeOptions !== null
+    ? modeOptions
+    : { plusModeEnabled: Boolean(modeOptions) };
+  currentPlusModeEnabled = Boolean(normalizedModeOptions.plusModeEnabled);
+  stepDefinitions = getStepDefinitionsForMode({
+    plusModeEnabled: currentPlusModeEnabled,
+    gptOnlyModeEnabled: Boolean(normalizedModeOptions.gptOnlyModeEnabled) && !currentPlusModeEnabled,
+  });
   STEP_IDS = stepDefinitions.map((step) => Number(step.id)).filter(Number.isFinite);
   STEP_DEFAULT_STATUSES = Object.fromEntries(STEP_IDS.map((stepId) => [stepId, 'pending']));
   SKIPPABLE_STEPS = new Set(STEP_IDS);
@@ -797,19 +811,25 @@ let phoneVerificationSectionExpanded = true;
 
 function readSettingsSectionExpanded() {
   try {
-    return globalThis.localStorage?.getItem(SETTINGS_SECTION_EXPANDED_STORAGE_KEY) === '1';
+    const saved = globalThis.localStorage?.getItem(SETTINGS_SECTION_EXPANDED_STORAGE_KEY);
+    if (saved === '0') {
+      return false;
+    }
+    if (saved === '1') {
+      return true;
+    }
+    return true;
   } catch (err) {
-    return false;
+    return true;
   }
 }
 
 function persistSettingsSectionExpanded(expanded) {
   try {
-    if (expanded) {
-      globalThis.localStorage?.setItem(SETTINGS_SECTION_EXPANDED_STORAGE_KEY, '1');
-    } else {
-      globalThis.localStorage?.removeItem(SETTINGS_SECTION_EXPANDED_STORAGE_KEY);
-    }
+    globalThis.localStorage?.setItem(
+      SETTINGS_SECTION_EXPANDED_STORAGE_KEY,
+      expanded ? '1' : '0'
+    );
   } catch (err) {
     // Ignore storage errors; the in-memory collapsed state is still enough for this session.
   }
@@ -2520,6 +2540,12 @@ function collectSettingsPayload() {
   const currentPayPalAccount = typeof getCurrentPayPalAccount === 'function'
     ? getCurrentPayPalAccount(latestState)
     : payPalAccounts.find((account) => account?.id === String(latestState?.currentPayPalAccountId || '').trim()) || null;
+  const plusModeEnabled = typeof inputPlusModeEnabled !== 'undefined' && inputPlusModeEnabled
+    ? Boolean(inputPlusModeEnabled.checked)
+    : Boolean(latestState?.plusModeEnabled);
+  const gptOnlyModeEnabled = !plusModeEnabled && typeof inputGptOnlyModeEnabled !== 'undefined' && inputGptOnlyModeEnabled
+    ? Boolean(inputGptOnlyModeEnabled.checked)
+    : false;
   return {
     ...(contributionModeEnabled ? {} : {
       panelMode: selectPanelMode.value,
@@ -2549,9 +2575,8 @@ function collectSettingsPayload() {
     ipProxyRegion: currentIpProxyServiceProfile.region,
     codex2apiUrl: inputCodex2ApiUrl.value.trim(),
     codex2apiAdminKey: inputCodex2ApiAdminKey.value.trim(),
-    plusModeEnabled: typeof inputPlusModeEnabled !== 'undefined' && inputPlusModeEnabled
-      ? Boolean(inputPlusModeEnabled.checked)
-      : Boolean(latestState?.plusModeEnabled),
+    plusModeEnabled,
+    gptOnlyModeEnabled,
     paypalEmail: String(currentPayPalAccount?.email || latestState?.paypalEmail || '').trim(),
     paypalPassword: String(currentPayPalAccount?.password || latestState?.paypalPassword || ''),
     currentPayPalAccountId: String(latestState?.currentPayPalAccountId || '').trim(),
@@ -3756,6 +3781,15 @@ function updatePlusModeUI() {
     }
     row.style.display = enabled ? '' : 'none';
   });
+  if (typeof inputGptOnlyModeEnabled !== 'undefined' && inputGptOnlyModeEnabled) {
+    if (enabled && inputGptOnlyModeEnabled.checked) {
+      inputGptOnlyModeEnabled.checked = false;
+    }
+    inputGptOnlyModeEnabled.disabled = enabled;
+  }
+  if (typeof rowGptOnlyMode !== 'undefined' && rowGptOnlyMode) {
+    rowGptOnlyMode.classList.toggle('is-disabled', enabled);
+  }
 }
 
 function setSettingsCardLocked(locked) {
@@ -3991,13 +4025,23 @@ function renderStepsList() {
 }
 
 function syncStepDefinitionsForMode(plusModeEnabled = false, options = {}) {
-  const nextPlusModeEnabled = Boolean(plusModeEnabled);
-  const shouldRender = Boolean(options.render) || nextPlusModeEnabled !== currentPlusModeEnabled;
+  const normalizedModeOptions = typeof plusModeEnabled === 'object' && plusModeEnabled !== null
+    ? plusModeEnabled
+    : { plusModeEnabled: Boolean(plusModeEnabled) };
+  const nextPlusModeEnabled = Boolean(normalizedModeOptions.plusModeEnabled);
+  const nextGptOnlyModeEnabled = Boolean(normalizedModeOptions.gptOnlyModeEnabled) && !nextPlusModeEnabled;
+  const currentGptOnlyModeEnabled = Boolean(latestState?.gptOnlyModeEnabled) && !currentPlusModeEnabled;
+  const shouldRender = Boolean(options.render)
+    || nextPlusModeEnabled !== currentPlusModeEnabled
+    || nextGptOnlyModeEnabled !== currentGptOnlyModeEnabled;
   if (!shouldRender) {
     return;
   }
 
-  rebuildStepDefinitionState(nextPlusModeEnabled);
+  rebuildStepDefinitionState({
+    plusModeEnabled: nextPlusModeEnabled,
+    gptOnlyModeEnabled: nextGptOnlyModeEnabled,
+  });
   renderStepsList();
 }
 
@@ -4007,7 +4051,10 @@ function syncStepDefinitionsForMode(plusModeEnabled = false, options = {}) {
 
 function applySettingsState(state) {
   if (typeof syncStepDefinitionsForMode === 'function') {
-    syncStepDefinitionsForMode(Boolean(state?.plusModeEnabled));
+    syncStepDefinitionsForMode({
+      plusModeEnabled: Boolean(state?.plusModeEnabled),
+      gptOnlyModeEnabled: Boolean(state?.gptOnlyModeEnabled),
+    });
   }
   const fallbackIpProxyService = '711proxy';
   const fallbackIpProxyMode = 'account';
@@ -4055,6 +4102,9 @@ function applySettingsState(state) {
   syncPasswordField(state || {});
   if (typeof inputPlusModeEnabled !== 'undefined' && inputPlusModeEnabled) {
     inputPlusModeEnabled.checked = Boolean(state?.plusModeEnabled);
+  }
+  if (typeof inputGptOnlyModeEnabled !== 'undefined' && inputGptOnlyModeEnabled) {
+    inputGptOnlyModeEnabled.checked = Boolean(state?.gptOnlyModeEnabled) && !Boolean(state?.plusModeEnabled);
   }
   inputVpsUrl.value = state?.vpsUrl || '';
   inputVpsPassword.value = state?.vpsPassword || '';
@@ -7281,7 +7331,19 @@ inputPassword.addEventListener('blur', () => {
 
 inputPlusModeEnabled?.addEventListener('change', () => {
   updatePlusModeUI();
-  syncStepDefinitionsForMode(Boolean(inputPlusModeEnabled.checked), { render: true });
+  syncStepDefinitionsForMode({
+    plusModeEnabled: Boolean(inputPlusModeEnabled.checked),
+    gptOnlyModeEnabled: Boolean(inputGptOnlyModeEnabled?.checked),
+  }, { render: true });
+  markSettingsDirty(true);
+  saveSettings({ silent: true }).catch(() => { });
+});
+
+inputGptOnlyModeEnabled?.addEventListener('change', () => {
+  syncStepDefinitionsForMode({
+    plusModeEnabled: Boolean(inputPlusModeEnabled?.checked),
+    gptOnlyModeEnabled: Boolean(inputGptOnlyModeEnabled.checked),
+  }, { render: true });
   markSettingsDirty(true);
   saveSettings({ silent: true }).catch(() => { });
 });

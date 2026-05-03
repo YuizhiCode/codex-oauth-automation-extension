@@ -125,3 +125,21 @@ test('completeStepFromBackground keeps non-final step data handling before compl
   assert.equal(types.indexOf('handle-done') < types.indexOf('notify'), true);
   assert.equal(types.includes('record'), false);
 });
+
+test('completeStepFromBackground treats step 6 as the final step in gpt-only mode', async () => {
+  const events = [];
+  const api = createApi(events, 6);
+
+  await api.completeStepFromBackground(6, { email: 'registered@example.com' });
+
+  const types = events.map((event) => event.type);
+  assert.equal(types.indexOf('notify') < types.indexOf('handle-start'), true);
+  assert.equal(types.includes('handle-done'), false);
+  assert.equal(types.includes('record'), false);
+
+  await new Promise((resolve) => setTimeout(resolve, 40));
+
+  const settledTypes = events.map((event) => event.type);
+  assert.equal(settledTypes.includes('handle-done'), true);
+  assert.equal(settledTypes.includes('record'), true);
+});

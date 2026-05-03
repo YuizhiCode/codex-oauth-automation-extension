@@ -8,6 +8,7 @@ test('step definitions module exposes ordered normal and Plus step metadata', ()
 
   const api = new Function('self', `${source}; return self.MultiPageStepDefinitions;`)(globalScope);
   const steps = api.getSteps();
+  const gptOnlySteps = api.getSteps({ gptOnlyModeEnabled: true });
   const plusSteps = api.getSteps({ plusModeEnabled: true });
 
   assert.equal(Array.isArray(steps), true);
@@ -32,6 +33,17 @@ test('step definitions module exposes ordered normal and Plus step metadata', ()
     ]
   );
   assert.deepStrictEqual(
+    gptOnlySteps.map((step) => step.key),
+    [
+      'open-chatgpt',
+      'submit-signup-email',
+      'fill-password',
+      'fetch-signup-code',
+      'fill-profile',
+      'clear-login-cookies',
+    ]
+  );
+  assert.deepStrictEqual(
     plusSteps.map((step) => step.key),
     [
       'open-chatgpt',
@@ -50,6 +62,10 @@ test('step definitions module exposes ordered normal and Plus step metadata', ()
     ]
   );
   assert.equal(plusSteps.some((step) => step.key === 'clear-login-cookies'), false);
+  assert.equal(gptOnlySteps.some((step) => step.key === 'oauth-login'), false);
+  assert.equal(gptOnlySteps.some((step) => step.key === 'platform-verify'), false);
+  assert.deepStrictEqual(api.getStepIds({ gptOnlyModeEnabled: true }), [1, 2, 3, 4, 5, 6]);
+  assert.equal(api.getLastStepId({ gptOnlyModeEnabled: true }), 6);
   assert.equal(plusSteps.some((step) => step.key === 'fetch-login-code'), true);
   assert.deepStrictEqual(api.getStepIds({ plusModeEnabled: true }), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
   assert.equal(api.getLastStepId({ plusModeEnabled: true }), 13);
@@ -68,6 +84,7 @@ test('sidepanel html loads shared step definitions before sidepanel bootstrap', 
 test('sidepanel html exposes Plus mode and PayPal settings', () => {
   const html = fs.readFileSync('sidepanel/sidepanel.html', 'utf8');
   assert.match(html, /id="input-plus-mode-enabled"/);
+  assert.match(html, /id="input-gpt-only-mode-enabled"/);
   assert.match(html, /id="select-paypal-account"/);
   assert.match(html, /id="btn-add-paypal-account"/);
   assert.match(html, /id="shared-form-modal"/);

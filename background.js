@@ -339,6 +339,10 @@ function isPlusModeState(state = {}) {
   return Boolean(state?.plusModeEnabled);
 }
 
+function isGptOnlyModeState(state = {}) {
+  return !isPlusModeState(state) && Boolean(state?.gptOnlyModeEnabled);
+}
+
 function normalizeContributionModeSource(value = '') {
   const normalized = String(value || '').trim().toLowerCase();
   return normalized === CONTRIBUTION_SOURCE_SUB2API
@@ -374,11 +378,23 @@ function resolveContributionModeRoutingState(state = {}) {
 }
 
 function getStepDefinitionsForState(state = {}) {
-  return isPlusModeState(state) ? PLUS_STEP_DEFINITIONS : NORMAL_STEP_DEFINITIONS;
+  if (isPlusModeState(state)) {
+    return PLUS_STEP_DEFINITIONS;
+  }
+  if (isGptOnlyModeState(state)) {
+    return NORMAL_STEP_DEFINITIONS.filter((definition) => Number(definition?.id) <= 6);
+  }
+  return NORMAL_STEP_DEFINITIONS;
 }
 
 function getStepIdsForState(state = {}) {
-  return isPlusModeState(state) ? PLUS_STEP_IDS : NORMAL_STEP_IDS;
+  if (isPlusModeState(state)) {
+    return PLUS_STEP_IDS;
+  }
+  if (isGptOnlyModeState(state)) {
+    return NORMAL_STEP_IDS.filter((stepId) => Number(stepId) <= 6);
+  }
+  return NORMAL_STEP_IDS;
 }
 
 function getLastStepIdForState(state = {}) {
@@ -457,6 +473,7 @@ const PERSISTED_SETTING_DEFAULTS = {
   codex2apiAdminKey: '',
   customPassword: '',
   plusModeEnabled: false,
+  gptOnlyModeEnabled: false,
   paypalEmail: '',
   paypalPassword: '',
   currentPayPalAccountId: '',
@@ -1434,6 +1451,7 @@ function normalizePersistentSettingValue(key, value) {
     case 'autoRunDelayEnabled':
     case 'phoneVerificationEnabled':
     case 'plusModeEnabled':
+    case 'gptOnlyModeEnabled':
       return Boolean(value);
     case 'autoRunFallbackThreadIntervalMinutes':
       return normalizeAutoRunFallbackThreadIntervalMinutes(value);
@@ -1621,6 +1639,10 @@ function buildPersistentSettingsPayload(input = {}, options = {}) {
     payload.ipProxyUsername = String(activeProfile?.username || payload.ipProxyUsername || '').trim();
     payload.ipProxyPassword = String(activeProfile?.password || payload.ipProxyPassword || '');
     payload.ipProxyRegion = String(activeProfile?.region || payload.ipProxyRegion || '').trim();
+  }
+
+  if (payload.plusModeEnabled) {
+    payload.gptOnlyModeEnabled = false;
   }
 
   return payload;

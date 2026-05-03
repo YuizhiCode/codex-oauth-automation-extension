@@ -126,7 +126,7 @@ test('sidepanel settings refresh preserves rendered step progress', () => {
   const applySettingsStateSource = extractFunction('applySettingsState');
   assert.doesNotMatch(
     applySettingsStateSource,
-    /syncStepDefinitionsForMode\(Boolean\(state\?\.plusModeEnabled\),\s*\{\s*render:\s*true\s*\}\)/
+    /syncStepDefinitionsForMode\(\s*\{\s*plusModeEnabled:\s*Boolean\(state\?\.plusModeEnabled\),\s*gptOnlyModeEnabled:\s*Boolean\(state\?\.gptOnlyModeEnabled\)\s*\}\s*,\s*\{\s*render:\s*true\s*\}\s*\)/
   );
   assert.match(applySettingsStateSource, /renderStepStatuses\(latestState\)/);
 

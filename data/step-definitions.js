@@ -14,6 +14,10 @@
     { id: 10, order: 100, key: 'platform-verify', title: '平台回调验证' },
   ];
 
+  const GPT_ONLY_STEP_DEFINITIONS = NORMAL_STEP_DEFINITIONS
+    .filter((step) => Number(step.id) <= 6)
+    .map((step) => ({ ...step }));
+
   const PLUS_STEP_DEFINITIONS = [
     { id: 1, order: 10, key: 'open-chatgpt', title: '打开 ChatGPT 官网' },
     { id: 2, order: 20, key: 'submit-signup-email', title: '注册并输入邮箱' },
@@ -34,8 +38,18 @@
     return Boolean(options?.plusModeEnabled || options?.plusMode);
   }
 
+  function isGptOnlyModeEnabled(options = {}) {
+    return Boolean(options?.gptOnlyModeEnabled || options?.gptOnlyMode);
+  }
+
   function getModeStepDefinitions(options = {}) {
-    return isPlusModeEnabled(options) ? PLUS_STEP_DEFINITIONS : NORMAL_STEP_DEFINITIONS;
+    if (isPlusModeEnabled(options)) {
+      return PLUS_STEP_DEFINITIONS;
+    }
+    if (isGptOnlyModeEnabled(options)) {
+      return GPT_ONLY_STEP_DEFINITIONS;
+    }
+    return NORMAL_STEP_DEFINITIONS;
   }
 
   function cloneSteps(steps = []) {
@@ -79,6 +93,7 @@
 
   return {
     STEP_DEFINITIONS: NORMAL_STEP_DEFINITIONS,
+    GPT_ONLY_STEP_DEFINITIONS,
     NORMAL_STEP_DEFINITIONS,
     PLUS_STEP_DEFINITIONS,
     getAllSteps,
@@ -86,6 +101,7 @@
     getStepById,
     getStepIds,
     getSteps,
+    isGptOnlyModeEnabled,
     isPlusModeEnabled,
   };
 });

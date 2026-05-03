@@ -86,7 +86,7 @@ test('sidepanel html exposes phone verification toggle and dedicated HeroSMS row
   assert.doesNotMatch(html, /id="input-account-run-history-text-enabled"/);
 });
 
-test('settings section expansion state uses collapsed-by-default toggle semantics', () => {
+test('settings section expansion state defaults to expanded on first open and then persists explicit user choice', () => {
   const api = new Function(`
 let settingsSectionExpanded = false;
 const SETTINGS_SECTION_EXPANDED_STORAGE_KEY = 'multipage-settings-section-expanded';
@@ -135,26 +135,28 @@ return {
 `)();
 
   api.initSettingsSectionExpandedState();
+  assert.equal(api.rowSettingsSectionFold.style.display, '');
+  assert.equal(api.btnToggleSettingsSection.textContent, '收起设置');
+  assert.equal(api.btnToggleSettingsSection.title, '收起插件设置');
+  assert.equal(api.btnToggleSettingsSection.attrs['aria-expanded'], 'true');
+  assert.equal(api.inputSettingsSectionExpanded.checked, true);
+  assert.equal(api.localStorageState.has('multipage-settings-section-expanded'), false);
+
+  api.toggleSettingsSectionExpanded();
   assert.equal(api.rowSettingsSectionFold.style.display, 'none');
   assert.equal(api.btnToggleSettingsSection.textContent, '展开设置');
   assert.equal(api.btnToggleSettingsSection.title, '展开插件设置');
   assert.equal(api.btnToggleSettingsSection.attrs['aria-expanded'], 'false');
   assert.equal(api.inputSettingsSectionExpanded.checked, false);
-  assert.equal(api.localStorageState.has('multipage-settings-section-expanded'), false);
+  assert.equal(api.localStorageState.get('multipage-settings-section-expanded'), '0');
 
-  api.toggleSettingsSectionExpanded();
+  api.setSettingsSectionExpanded(true);
   assert.equal(api.rowSettingsSectionFold.style.display, '');
   assert.equal(api.btnToggleSettingsSection.textContent, '收起设置');
   assert.equal(api.btnToggleSettingsSection.title, '收起插件设置');
   assert.equal(api.btnToggleSettingsSection.attrs['aria-expanded'], 'true');
   assert.equal(api.inputSettingsSectionExpanded.checked, true);
   assert.equal(api.localStorageState.get('multipage-settings-section-expanded'), '1');
-
-  api.setSettingsSectionExpanded(false);
-  assert.equal(api.rowSettingsSectionFold.style.display, 'none');
-  assert.equal(api.btnToggleSettingsSection.textContent, '展开设置');
-  assert.equal(api.inputSettingsSectionExpanded.checked, false);
-  assert.equal(api.localStorageState.has('multipage-settings-section-expanded'), false);
 });
 
 test('updatePhoneVerificationSettingsUI toggles HeroSMS rows from the sms switch', () => {
@@ -276,6 +278,8 @@ const inputSub2ApiDefaultProxy = { value: '' };
 const inputCodex2ApiUrl = { value: '' };
 const inputCodex2ApiAdminKey = { value: '' };
 const inputPassword = { value: '' };
+const inputPlusModeEnabled = { checked: false };
+const inputGptOnlyModeEnabled = { checked: true };
 const selectMailProvider = { value: '163' };
 const selectEmailGenerator = { value: 'duck' };
 const checkboxAutoDeleteIcloud = { checked: false };
@@ -381,6 +385,7 @@ return { collectSettingsPayload };
   assert.equal(payload.phoneVerificationEnabled, true);
   assert.equal(payload.accountRunHistoryTextEnabled, true);
   assert.equal(payload.accountRunHistoryHelperBaseUrl, 'http://127.0.0.1:17373');
+  assert.equal(payload.gptOnlyModeEnabled, true);
   assert.equal(payload.heroSmsApiKey, 'demo-key');
   assert.equal(payload.heroSmsReuseEnabled, true);
   assert.equal(payload.heroSmsAcquirePriority, 'price');
@@ -394,4 +399,134 @@ return { collectSettingsPayload };
   assert.equal(payload.heroSmsCountryId, 52);
   assert.equal(payload.heroSmsCountryLabel, 'Thailand');
   assert.deepStrictEqual(payload.heroSmsCountryFallback, [{ id: 16, label: 'United Kingdom' }]);
+});
+
+test('collectSettingsPayload disables gpt-only mode when Plus mode is enabled', () => {
+  const api = new Function('normalizeIcloudTargetMailboxType', 'normalizeIcloudForwardMailProvider', `
+let latestState = {
+  contributionMode: false,
+  mail2925UseAccountPool: false,
+  currentMail2925AccountId: '',
+};
+let cloudflareDomainEditMode = false;
+let cloudflareTempEmailDomainEditMode = false;
+const selectCfDomain = { value: '' };
+const selectTempEmailDomain = { value: '' };
+const selectPanelMode = { value: 'cpa' };
+const inputVpsUrl = { value: '' };
+const inputVpsPassword = { value: '' };
+const inputSub2ApiUrl = { value: '' };
+const inputSub2ApiEmail = { value: '' };
+const inputSub2ApiPassword = { value: '' };
+const inputSub2ApiGroup = { value: '' };
+const inputSub2ApiDefaultProxy = { value: '' };
+const inputCodex2ApiUrl = { value: '' };
+const inputCodex2ApiAdminKey = { value: '' };
+const inputPassword = { value: '' };
+const inputPlusModeEnabled = { checked: true };
+const inputGptOnlyModeEnabled = { checked: true };
+const selectMailProvider = { value: '163' };
+const selectEmailGenerator = { value: 'duck' };
+const checkboxAutoDeleteIcloud = { checked: false };
+const selectIcloudHostPreference = { value: 'auto' };
+const inputMail2925UseAccountPool = { checked: false };
+const inputInbucketHost = { value: '' };
+const inputInbucketMailbox = { value: '' };
+const inputHotmailRemoteBaseUrl = { value: '' };
+const inputHotmailLocalBaseUrl = { value: '' };
+const inputLuckmailApiKey = { value: '' };
+const inputLuckmailBaseUrl = { value: '' };
+const selectLuckmailEmailType = { value: 'ms_graph' };
+const inputLuckmailDomain = { value: '' };
+const inputTempEmailBaseUrl = { value: '' };
+const inputTempEmailAdminAuth = { value: '' };
+const inputTempEmailCustomAuth = { value: '' };
+const inputTempEmailReceiveMailbox = { value: '' };
+const inputTempEmailUseRandomSubdomain = { checked: false };
+const inputAutoSkipFailures = { checked: false };
+const inputAutoSkipFailuresThreadIntervalMinutes = { value: '0' };
+const inputAutoDelayEnabled = { checked: false };
+const inputAutoDelayMinutes = { value: '30' };
+const inputAutoStepDelaySeconds = { value: '' };
+const inputPhoneVerificationEnabled = { checked: false };
+const inputVerificationResendCount = { value: '4' };
+const inputHeroSmsApiKey = { value: '' };
+const inputHeroSmsReuseEnabled = { checked: true };
+const selectHeroSmsAcquirePriority = { value: 'country' };
+const inputHeroSmsMinPrice = { value: '0.05' };
+const inputHeroSmsMaxPrice = { value: '' };
+const inputPhoneReplacementLimit = { value: '3' };
+const inputPhoneCodeWaitSeconds = { value: '60' };
+const inputPhoneCodeTimeoutWindows = { value: '2' };
+const inputPhoneCodePollIntervalSeconds = { value: '5' };
+const inputPhoneCodePollMaxRounds = { value: '4' };
+const inputAccountRunHistoryHelperBaseUrl = { value: 'http://127.0.0.1:17373' };
+const DEFAULT_VERIFICATION_RESEND_COUNT = 4;
+const DEFAULT_PHONE_VERIFICATION_REPLACEMENT_LIMIT = 3;
+const DEFAULT_PHONE_CODE_WAIT_SECONDS = 60;
+const DEFAULT_PHONE_CODE_TIMEOUT_WINDOWS = 2;
+const DEFAULT_PHONE_CODE_POLL_INTERVAL_SECONDS = 5;
+const DEFAULT_PHONE_CODE_POLL_MAX_ROUNDS = 4;
+const PHONE_CODE_WAIT_SECONDS_MIN = 15;
+const PHONE_CODE_WAIT_SECONDS_MAX = 300;
+const PHONE_CODE_TIMEOUT_WINDOWS_MIN = 1;
+const PHONE_CODE_TIMEOUT_WINDOWS_MAX = 10;
+const PHONE_CODE_POLL_INTERVAL_SECONDS_MIN = 1;
+const PHONE_CODE_POLL_INTERVAL_SECONDS_MAX = 30;
+const PHONE_CODE_POLL_MAX_ROUNDS_MIN = 1;
+const PHONE_CODE_POLL_MAX_ROUNDS_MAX = 120;
+const PHONE_REPLACEMENT_LIMIT_MIN = 1;
+const PHONE_REPLACEMENT_LIMIT_MAX = 20;
+const DEFAULT_HERO_SMS_REUSE_ENABLED = true;
+const HERO_SMS_ACQUIRE_PRIORITY_COUNTRY = 'country';
+const HERO_SMS_ACQUIRE_PRIORITY_PRICE = 'price';
+const DEFAULT_HERO_SMS_ACQUIRE_PRIORITY = HERO_SMS_ACQUIRE_PRIORITY_COUNTRY;
+const DEFAULT_HERO_SMS_MIN_PRICE = '0.05';
+const DEFAULT_HERO_SMS_COUNTRY_ID = 52;
+const DEFAULT_HERO_SMS_COUNTRY_LABEL = 'Thailand';
+const selectHeroSmsCountry = {
+  value: '52',
+  selectedIndex: 0,
+  options: [{ textContent: 'Thailand' }],
+};
+function getCloudflareDomainsFromState() { return { domains: [], activeDomain: '' }; }
+function normalizeCloudflareDomainValue(value) { return String(value || '').trim(); }
+function getCloudflareTempEmailDomainsFromState() { return { domains: [], activeDomain: '' }; }
+function normalizeCloudflareTempEmailDomainValue(value) { return String(value || '').trim(); }
+function getSelectedLocalCpaStep9Mode() { return 'submit'; }
+function getSelectedMail2925Mode() { return 'provide'; }
+function getSelectedHotmailServiceMode() { return 'local'; }
+function buildManagedAliasBaseEmailPayload() { return { gmailBaseEmail: '', mail2925BaseEmail: '', emailPrefix: '' }; }
+function normalizeLuckmailBaseUrl(value) { return String(value || '').trim(); }
+function normalizeLuckmailEmailType(value) { return String(value || '').trim() || 'ms_graph'; }
+function normalizeCloudflareTempEmailBaseUrlValue(value) { return String(value || '').trim(); }
+function normalizeCloudflareTempEmailReceiveMailboxValue(value) { return String(value || '').trim(); }
+function normalizeAccountRunHistoryHelperBaseUrlValue(value) { return String(value || '').trim(); }
+function normalizeAutoRunThreadIntervalMinutes(value) { return Number(value) || 0; }
+function normalizeAutoDelayMinutes(value) { return Number(value) || 30; }
+function normalizeAutoStepDelaySeconds(value) { return value === '' ? null : Number(value); }
+function normalizeVerificationResendCount(value, fallback) { return Number(value) || fallback; }
+${extractFunction('normalizeHeroSmsMaxPriceValue')}
+${extractFunction('normalizeHeroSmsMinPriceValue')}
+${extractFunction('normalizePhoneVerificationReplacementLimit')}
+${extractFunction('normalizePhoneCodeWaitSecondsValue')}
+${extractFunction('normalizePhoneCodeTimeoutWindowsValue')}
+${extractFunction('normalizePhoneCodePollIntervalSecondsValue')}
+${extractFunction('normalizePhoneCodePollMaxRoundsValue')}
+${extractFunction('normalizeHeroSmsReuseEnabledValue')}
+${extractFunction('normalizeHeroSmsAcquirePriority')}
+${extractFunction('normalizeHeroSmsCountryId')}
+${extractFunction('normalizeHeroSmsCountryLabel')}
+${extractFunction('getSelectedHeroSmsCountryOption')}
+function syncHeroSmsFallbackSelectionOrderFromSelect() {
+  return [{ id: 52, label: 'Thailand' }];
+}
+${extractFunction('collectSettingsPayload')}
+return { collectSettingsPayload };
+`)(normalizeIcloudTargetMailboxType, normalizeIcloudForwardMailProvider);
+
+  const payload = api.collectSettingsPayload();
+
+  assert.equal(payload.plusModeEnabled, true);
+  assert.equal(payload.gptOnlyModeEnabled, false);
 });

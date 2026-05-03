@@ -376,6 +376,7 @@
               vpsPassword: prevState.vpsPassword,
               customPassword: prevState.customPassword,
               plusModeEnabled: prevState.plusModeEnabled,
+              gptOnlyModeEnabled: prevState.gptOnlyModeEnabled,
               paypalEmail: prevState.paypalEmail,
               paypalPassword: prevState.paypalPassword,
               autoRunSkipFailures: prevState.autoRunSkipFailures,
