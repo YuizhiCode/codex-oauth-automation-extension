@@ -341,6 +341,7 @@ function getLoginAuthStateLabel(snapshot) {
 }
 
 ${extractFunction('waitForLoginVerificationPageReady')}
+${extractFunction('getAuthLoginStepForLoginCodeStep')}
 
 return {
   run() {

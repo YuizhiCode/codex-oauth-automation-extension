@@ -178,6 +178,58 @@ test('step 7 starts a new oauth timeout window for each refreshed oauth url', as
   ]);
 });
 
+test('step 7 sends phone login identifier when signup mode is phone', async () => {
+  const source = fs.readFileSync('background/steps/oauth-login.js', 'utf8');
+  const globalScope = {};
+  const api = new Function('self', `${source}; return self.MultiPageBackgroundStep7;`)(globalScope);
+
+  const sentMessages = [];
+
+  const executor = api.createStep7Executor({
+    addLog: async () => {},
+    completeStepFromBackground: async () => {},
+    getErrorMessage: (error) => error?.message || String(error || ''),
+    getLoginAuthStateLabel: (state) => state || 'unknown',
+    getState: async () => ({
+      signupMethod: 'phone',
+      signupPhoneCompletedActivation: {
+        phoneNumber: '+66812345678',
+        countryId: 'thailand',
+        countryLabel: 'Thailand',
+      },
+      password: 'secret',
+    }),
+    isStep6RecoverableResult: (result) => result?.step6Outcome === 'recoverable',
+    isStep6SuccessResult: (result) => result?.step6Outcome === 'success',
+    refreshOAuthUrlBeforeStep6: async () => 'https://oauth.example/latest',
+    reuseOrCreateTab: async () => {},
+    sendToContentScriptResilient: async (_source, message) => {
+      sentMessages.push(message);
+      return { step6Outcome: 'success' };
+    },
+    STEP6_MAX_ATTEMPTS: 3,
+    throwIfStopped: () => {},
+  });
+
+  await executor.executeStep7({
+    signupMethod: 'phone',
+    signupPhoneCompletedActivation: {
+      phoneNumber: '+66812345678',
+      countryId: 'thailand',
+      countryLabel: 'Thailand',
+    },
+    password: 'secret',
+  });
+
+  assert.equal(sentMessages.length, 1);
+  assert.equal(sentMessages[0].payload.loginIdentifierType, 'phone');
+  assert.equal(sentMessages[0].payload.phoneNumber, '+66812345678');
+  assert.equal(sentMessages[0].payload.accountIdentifier, '+66812345678');
+  assert.equal(sentMessages[0].payload.email, '');
+  assert.equal(sentMessages[0].payload.countryId, 'thailand');
+  assert.equal(sentMessages[0].payload.countryLabel, 'Thailand');
+});
+
 test('step 7 forwards direct OAuth consent skip metadata when completing', async () => {
   const source = fs.readFileSync('background/steps/oauth-login.js', 'utf8');
   const globalScope = {};

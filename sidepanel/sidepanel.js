@@ -313,6 +313,10 @@ const rowPhoneVerificationEnabled = document.getElementById('row-phone-verificat
 const btnTogglePhoneVerificationSection = document.getElementById('btn-toggle-phone-verification-section');
 const rowPhoneVerificationFold = document.getElementById('row-phone-verification-fold');
 const inputPhoneVerificationEnabled = document.getElementById('input-phone-verification-enabled');
+const rowSignupMethod = document.getElementById('row-signup-method');
+const rowSignupPhone = document.getElementById('row-signup-phone');
+const inputSignupPhone = document.getElementById('input-signup-phone');
+const signupMethodButtons = Array.from(document.querySelectorAll('[data-signup-method]'));
 const rowPhoneSmsProvider = document.getElementById('row-phone-sms-provider');
 const selectPhoneSmsProvider = document.getElementById('select-phone-sms-provider');
 const rowPhoneSmsProviderOrder = document.getElementById('row-phone-sms-provider-order');
@@ -405,12 +409,19 @@ const btnAutoStartRestart = document.getElementById('btn-auto-start-restart');
 const btnAutoStartContinue = document.getElementById('btn-auto-start-continue');
 const autoHintText = document.querySelector('.auto-hint');
 const stepsList = document.querySelector('.steps-list');
+const SIGNUP_METHOD_EMAIL = 'email';
+const SIGNUP_METHOD_PHONE = 'phone';
+const DEFAULT_SIGNUP_METHOD = SIGNUP_METHOD_EMAIL;
 let currentPlusModeEnabled = false;
 let heroSmsCountrySelectionOrder = [];
 let phoneSmsProviderOrderSelection = [];
 let fiveSimCountrySelectionOrder = [];
 let nexSmsCountrySelectionOrder = [];
 let heroSmsCountryMenuSearchKeyword = '';
+let currentSignupMethod = DEFAULT_SIGNUP_METHOD;
+let signupPhoneInputDirty = false;
+let signupPhoneInputFocused = false;
+let signupPhoneInputPersistPromise = null;
 const heroSmsCountrySearchTextById = new Map();
 const REGISTERED_ACCOUNT_POOL_PAGE_SIZE_OPTIONS = [20, 40, 60];
 const DEFAULT_REGISTERED_ACCOUNT_POOL_PAGE_SIZE = 20;
@@ -421,6 +432,7 @@ let registeredAccountPoolSelectedEmails = new Set();
 let stepDefinitions = getStepDefinitionsForMode({
   plusModeEnabled: false,
   gptOnlyModeEnabled: false,
+  signupMethod: currentSignupMethod,
 });
 let STEP_IDS = stepDefinitions.map((step) => Number(step.id)).filter(Number.isFinite);
 let STEP_DEFAULT_STATUSES = Object.fromEntries(STEP_IDS.map((stepId) => [stepId, 'pending']));
@@ -535,9 +547,15 @@ function rebuildStepDefinitionState(modeOptions = {}) {
     ? modeOptions
     : { plusModeEnabled: Boolean(modeOptions) };
   currentPlusModeEnabled = Boolean(normalizedModeOptions.plusModeEnabled);
+  currentSignupMethod = normalizeSignupMethod(
+    normalizedModeOptions.signupMethod
+    || currentSignupMethod
+    || DEFAULT_SIGNUP_METHOD
+  );
   stepDefinitions = getStepDefinitionsForMode({
     plusModeEnabled: currentPlusModeEnabled,
     gptOnlyModeEnabled: Boolean(normalizedModeOptions.gptOnlyModeEnabled) && !currentPlusModeEnabled,
+    signupMethod: currentSignupMethod,
   });
   STEP_IDS = stepDefinitions.map((step) => Number(step.id)).filter(Number.isFinite);
   STEP_DEFAULT_STATUSES = Object.fromEntries(STEP_IDS.map((stepId) => [stepId, 'pending']));
@@ -2660,6 +2678,9 @@ function collectSettingsPayload() {
   const gptOnlyModeEnabled = !plusModeEnabled && typeof inputGptOnlyModeEnabled !== 'undefined' && inputGptOnlyModeEnabled
     ? Boolean(inputGptOnlyModeEnabled.checked)
     : false;
+  const signupMethod = typeof getSelectedSignupMethod === 'function'
+    ? getSelectedSignupMethod()
+    : normalizeSignupMethod(latestState?.signupMethod || currentSignupMethod || DEFAULT_SIGNUP_METHOD);
   return {
     ...(contributionModeEnabled ? {} : {
       panelMode: selectPanelMode.value,
@@ -2689,6 +2710,7 @@ function collectSettingsPayload() {
     ipProxyRegion: currentIpProxyServiceProfile.region,
     codex2apiUrl: inputCodex2ApiUrl.value.trim(),
     codex2apiAdminKey: inputCodex2ApiAdminKey.value.trim(),
+    signupMethod,
     plusModeEnabled,
     gptOnlyModeEnabled,
     paypalEmail: String(currentPayPalAccount?.email || latestState?.paypalEmail || '').trim(),
@@ -4253,6 +4275,98 @@ function updateAccountRunHistorySettingsUI() {
   rowAccountRunHistoryHelperBaseUrl.style.display = 'none';
 }
 
+function normalizeSignupMethod(value = '') {
+  return String(value || '').trim().toLowerCase() === SIGNUP_METHOD_PHONE
+    ? SIGNUP_METHOD_PHONE
+    : SIGNUP_METHOD_EMAIL;
+}
+
+function getSelectedSignupMethod() {
+  const activeButton = signupMethodButtons.find((button) => button.classList.contains('is-active'));
+  return normalizeSignupMethod(activeButton?.dataset.signupMethod || latestState?.signupMethod || currentSignupMethod || DEFAULT_SIGNUP_METHOD);
+}
+
+function setSignupMethod(method) {
+  const resolvedMethod = normalizeSignupMethod(method);
+  signupMethodButtons.forEach((button) => {
+    const active = normalizeSignupMethod(button.dataset.signupMethod) === resolvedMethod;
+    button.classList.toggle('is-active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  syncLatestState({ signupMethod: resolvedMethod });
+  return resolvedMethod;
+}
+
+function canSelectPhoneSignupMethod() {
+  return Boolean(inputPhoneVerificationEnabled?.checked)
+    && !(typeof inputPlusModeEnabled !== 'undefined' && inputPlusModeEnabled?.checked)
+    && !Boolean(latestState?.contributionMode);
+}
+
+function isSignupMethodSwitchLocked() {
+  return isAutoRunLockedPhase() || isAutoRunPausedPhase() || isAutoRunScheduledPhase();
+}
+
+function updateSignupMethodUI(options = {}) {
+  if (!signupMethodButtons.length) {
+    syncSignupPhoneInputFromState(latestState);
+    return;
+  }
+
+  const showSignupMethod = Boolean(inputPhoneVerificationEnabled?.checked);
+  if (rowSignupMethod) {
+    rowSignupMethod.style.display = showSignupMethod ? '' : 'none';
+  }
+
+  let selectedMethod = normalizeSignupMethod(getSelectedSignupMethod());
+  const phoneSelectable = canSelectPhoneSignupMethod();
+  if (!phoneSelectable && selectedMethod === SIGNUP_METHOD_PHONE) {
+    selectedMethod = setSignupMethod(SIGNUP_METHOD_EMAIL);
+    if (options.notify) {
+      showToast('已切回邮箱注册', 'info', 1600);
+    }
+  } else {
+    setSignupMethod(selectedMethod);
+  }
+
+  const locked = isSignupMethodSwitchLocked();
+  signupMethodButtons.forEach((button) => {
+    const method = normalizeSignupMethod(button.dataset.signupMethod);
+    const disabled = locked || (method === SIGNUP_METHOD_PHONE && !phoneSelectable);
+    button.disabled = disabled;
+    button.setAttribute('aria-disabled', String(disabled));
+    if (method === SIGNUP_METHOD_PHONE) {
+      if (!Boolean(inputPhoneVerificationEnabled?.checked)) {
+        button.title = '开启接码后可选择手机号注册';
+      } else if (typeof inputPlusModeEnabled !== 'undefined' && inputPlusModeEnabled?.checked) {
+        button.title = 'Plus 模式第一版暂不支持手机号注册';
+      } else if (latestState?.contributionMode) {
+        button.title = '贡献模式第一版暂不支持手机号注册';
+      } else if (locked) {
+        button.title = '自动流程运行中不能切换注册方式';
+      } else {
+        button.title = '';
+      }
+    }
+  });
+
+  syncStepDefinitionsForMode(
+    typeof inputPlusModeEnabled !== 'undefined' && inputPlusModeEnabled
+      ? Boolean(inputPlusModeEnabled.checked)
+      : Boolean(latestState?.plusModeEnabled),
+    {
+      plusModeEnabled: typeof inputPlusModeEnabled !== 'undefined' && inputPlusModeEnabled
+        ? Boolean(inputPlusModeEnabled.checked)
+        : Boolean(latestState?.plusModeEnabled),
+      gptOnlyModeEnabled: typeof inputGptOnlyModeEnabled !== 'undefined' && inputGptOnlyModeEnabled
+        ? Boolean(inputGptOnlyModeEnabled.checked)
+        : Boolean(latestState?.gptOnlyModeEnabled),
+      signupMethod: selectedMethod,
+    }
+  );
+  syncSignupPhoneInputFromState(latestState);
+}
+
 function updatePhoneVerificationSettingsUI() {
   const enabled = Boolean(inputPhoneVerificationEnabled?.checked);
   const showSettings = enabled && phoneVerificationSectionExpanded;
@@ -4292,6 +4406,9 @@ function updatePhoneVerificationSettingsUI() {
   const nexSmsProvider = provider === nexSmsProviderValue;
   if (rowPhoneVerificationEnabled) {
     rowPhoneVerificationEnabled.style.display = '';
+  }
+  if (typeof updateSignupMethodUI === 'function') {
+    updateSignupMethodUI();
   }
   if (btnTogglePhoneVerificationSection) {
     btnTogglePhoneVerificationSection.disabled = !enabled;
@@ -4440,6 +4557,154 @@ async function setRuntimeEmailState(email) {
   }
 
   return normalizedEmail;
+}
+
+function getRuntimeSignupPhoneValue(state = latestState) {
+  const identifierType = String(state?.accountIdentifierType || '').trim().toLowerCase();
+  return String(
+    state?.signupPhoneNumber
+    || (identifierType === 'phone' ? state?.accountIdentifier : '')
+    || ''
+  ).trim();
+}
+
+function shouldExecuteStep3WithSignupPhoneIdentity(state = latestState) {
+  const identifierType = String(state?.accountIdentifierType || '').trim().toLowerCase();
+  const resolvedMethod = normalizeSignupMethod(
+    state?.resolvedSignupMethod
+    || state?.signupMethod
+    || (typeof getSelectedSignupMethod === 'function' ? getSelectedSignupMethod() : DEFAULT_SIGNUP_METHOD)
+  );
+  return identifierType === 'phone'
+    || Boolean(getRuntimeSignupPhoneValue(state))
+    || resolvedMethod === SIGNUP_METHOD_PHONE;
+}
+
+function getSignupPhoneInputValue() {
+  return typeof inputSignupPhone !== 'undefined' && inputSignupPhone
+    ? String(inputSignupPhone.value || '').trim()
+    : '';
+}
+
+function shouldPreserveSignupPhoneInputValue(stateSignupPhone = '') {
+  if (typeof inputSignupPhone === 'undefined' || !inputSignupPhone || !signupPhoneInputDirty) {
+    return false;
+  }
+  if (getSignupPhoneInputValue() === String(stateSignupPhone || '').trim()) {
+    signupPhoneInputDirty = false;
+    return false;
+  }
+  return signupPhoneInputFocused || (typeof document !== 'undefined' && document.activeElement === inputSignupPhone);
+}
+
+function syncSignupPhoneInputFromState(state = latestState) {
+  const signupPhone = getRuntimeSignupPhoneValue(state);
+  if (typeof inputSignupPhone !== 'undefined' && inputSignupPhone) {
+    if (!shouldPreserveSignupPhoneInputValue(signupPhone)) {
+      inputSignupPhone.value = signupPhone;
+    }
+  }
+  if (typeof rowSignupPhone !== 'undefined' && rowSignupPhone) {
+    const phoneVerificationEnabled = typeof inputPhoneVerificationEnabled !== 'undefined' && inputPhoneVerificationEnabled
+      ? Boolean(inputPhoneVerificationEnabled.checked)
+      : Boolean(state?.phoneVerificationEnabled || latestState?.phoneVerificationEnabled);
+    const rawSignupMethod = state?.signupMethod || (
+      typeof getSelectedSignupMethod === 'function'
+        ? getSelectedSignupMethod()
+        : SIGNUP_METHOD_EMAIL
+    );
+    const selectedMethod = typeof normalizeSignupMethod === 'function'
+      ? normalizeSignupMethod(rawSignupMethod)
+      : (String(rawSignupMethod || '').trim().toLowerCase() === SIGNUP_METHOD_PHONE ? SIGNUP_METHOD_PHONE : SIGNUP_METHOD_EMAIL);
+    rowSignupPhone.style.display = phoneVerificationEnabled
+      && (selectedMethod === SIGNUP_METHOD_PHONE || Boolean(signupPhone) || Boolean(getSignupPhoneInputValue()) || signupPhoneInputDirty)
+      ? ''
+      : 'none';
+  }
+}
+
+async function setRuntimeSignupPhoneState(phoneNumber) {
+  const normalizedPhone = String(phoneNumber || '').trim() || null;
+  const response = await chrome.runtime.sendMessage({
+    type: 'SET_SIGNUP_PHONE_STATE',
+    source: 'sidepanel',
+    payload: { phoneNumber: normalizedPhone },
+  });
+
+  if (response?.error) {
+    throw new Error(response.error);
+  }
+
+  return normalizedPhone;
+}
+
+async function persistSignupPhoneInputValue(options = {}) {
+  const { final = true, silent = true } = options;
+  if (typeof inputSignupPhone === 'undefined' || !inputSignupPhone) {
+    return getRuntimeSignupPhoneValue(latestState);
+  }
+  if (signupPhoneInputPersistPromise) {
+    return signupPhoneInputPersistPromise;
+  }
+
+  const phoneNumber = getSignupPhoneInputValue();
+  inputSignupPhone.value = phoneNumber;
+  const currentPhone = getRuntimeSignupPhoneValue(latestState);
+  if (!signupPhoneInputDirty && phoneNumber === currentPhone) {
+    return phoneNumber;
+  }
+
+  signupPhoneInputPersistPromise = (async () => {
+    const response = await chrome.runtime.sendMessage({
+      type: final ? 'SAVE_SIGNUP_PHONE' : 'SET_SIGNUP_PHONE_STATE',
+      source: 'sidepanel',
+      payload: { phoneNumber },
+    });
+    if (response?.error) {
+      throw new Error(response.error);
+    }
+
+    const normalizedPhone = String(response?.phoneNumber || phoneNumber || '').trim();
+    signupPhoneInputDirty = getSignupPhoneInputValue() !== normalizedPhone;
+    syncLatestState({
+      signupPhoneNumber: normalizedPhone,
+      phoneNumber: '',
+      ...(normalizedPhone
+        ? {
+          accountIdentifierType: 'phone',
+          accountIdentifier: normalizedPhone,
+        }
+        : (String(latestState?.accountIdentifierType || '').trim().toLowerCase() === 'phone'
+          ? {
+            accountIdentifierType: null,
+            accountIdentifier: '',
+          }
+          : {})),
+    });
+    syncSignupPhoneInputFromState(latestState);
+    if (!silent) {
+      showToast(normalizedPhone ? '注册手机号已保存。' : '注册手机号已清空。', 'success', 1600);
+    }
+    return normalizedPhone;
+  })();
+
+  try {
+    return await signupPhoneInputPersistPromise;
+  } finally {
+    signupPhoneInputPersistPromise = null;
+  }
+}
+
+async function persistSignupPhoneInputForAction() {
+  if (typeof inputSignupPhone === 'undefined' || !inputSignupPhone) {
+    return;
+  }
+  const phoneNumber = getSignupPhoneInputValue();
+  const currentPhone = getRuntimeSignupPhoneValue(latestState);
+  if (!signupPhoneInputDirty && phoneNumber === currentPhone) {
+    return;
+  }
+  await persistSignupPhoneInputValue({ final: true, silent: true });
 }
 
 async function clearRegistrationEmail(options = {}) {
@@ -4653,14 +4918,27 @@ function renderStepsList() {
 
 function syncStepDefinitionsForMode(plusModeEnabled = false, options = {}) {
   const normalizedModeOptions = typeof plusModeEnabled === 'object' && plusModeEnabled !== null
-    ? plusModeEnabled
-    : { plusModeEnabled: Boolean(plusModeEnabled) };
+    ? {
+      ...plusModeEnabled,
+      ...((options && typeof options === 'object') ? options : {}),
+    }
+    : {
+      plusModeEnabled: Boolean(plusModeEnabled),
+      ...((options && typeof options === 'object') ? options : {}),
+    };
   const nextPlusModeEnabled = Boolean(normalizedModeOptions.plusModeEnabled);
   const nextGptOnlyModeEnabled = Boolean(normalizedModeOptions.gptOnlyModeEnabled) && !nextPlusModeEnabled;
+  const nextSignupMethod = normalizeSignupMethod(
+    normalizedModeOptions.signupMethod
+    || latestState?.signupMethod
+    || currentSignupMethod
+    || DEFAULT_SIGNUP_METHOD
+  );
   const currentGptOnlyModeEnabled = Boolean(latestState?.gptOnlyModeEnabled) && !currentPlusModeEnabled;
   const shouldRender = Boolean(options.render)
     || nextPlusModeEnabled !== currentPlusModeEnabled
-    || nextGptOnlyModeEnabled !== currentGptOnlyModeEnabled;
+    || nextGptOnlyModeEnabled !== currentGptOnlyModeEnabled
+    || nextSignupMethod !== currentSignupMethod;
   if (!shouldRender) {
     return;
   }
@@ -4668,6 +4946,7 @@ function syncStepDefinitionsForMode(plusModeEnabled = false, options = {}) {
   rebuildStepDefinitionState({
     plusModeEnabled: nextPlusModeEnabled,
     gptOnlyModeEnabled: nextGptOnlyModeEnabled,
+    signupMethod: nextSignupMethod,
   });
   renderStepsList();
 }
@@ -4914,6 +5193,7 @@ function applySettingsState(state) {
       ? Boolean(state.phoneVerificationEnabled)
       : DEFAULT_PHONE_VERIFICATION_ENABLED;
   }
+  setSignupMethod(state?.signupMethod || DEFAULT_SIGNUP_METHOD);
   if (selectPhoneSmsProvider) {
     selectPhoneSmsProvider.value = normalizePhoneSmsProviderValue(
       state?.phoneSmsProvider || DEFAULT_PHONE_SMS_PROVIDER
@@ -5036,6 +5316,7 @@ function applySettingsState(state) {
   updateAutoDelayInputState();
   updateFallbackThreadIntervalInputState();
   updateAccountRunHistorySettingsUI();
+  syncSignupPhoneInputFromState(state);
   updatePhoneVerificationSettingsUI();
   renderRegisteredAccountPool(state);
   if (typeof renderPayPalAccounts === 'function') {
@@ -8858,6 +9139,41 @@ inputPhoneVerificationEnabled?.addEventListener('change', () => {
   }
   markSettingsDirty(true);
   saveSettings({ silent: true }).catch(() => { });
+});
+
+signupMethodButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    const nextMethod = normalizeSignupMethod(button.dataset.signupMethod);
+    if (nextMethod === getSelectedSignupMethod()) {
+      return;
+    }
+    setSignupMethod(nextMethod);
+    updatePhoneVerificationSettingsUI();
+    syncStepDefinitionsForMode({
+      plusModeEnabled: Boolean(inputPlusModeEnabled?.checked),
+      gptOnlyModeEnabled: Boolean(inputGptOnlyModeEnabled?.checked),
+      signupMethod: nextMethod,
+      render: true,
+    });
+    markSettingsDirty(true);
+    saveSettings({ silent: true }).catch(() => { });
+  });
+});
+
+inputSignupPhone?.addEventListener('focus', () => {
+  signupPhoneInputFocused = true;
+});
+
+inputSignupPhone?.addEventListener('blur', () => {
+  signupPhoneInputFocused = false;
+  persistSignupPhoneInputValue({ final: true, silent: true }).catch(() => {});
+});
+
+inputSignupPhone?.addEventListener('input', () => {
+  signupPhoneInputDirty = true;
+  syncSignupPhoneInputFromState(latestState);
+  markSettingsDirty(true);
+  scheduleSettingsAutoSave();
 });
 
 selectPhoneSmsProvider?.addEventListener('change', () => {

@@ -55,6 +55,11 @@ const bundle = [
   extractFunction('getLoginVerificationDisplayedEmail'),
   extractFunction('getPhoneVerificationDisplayedPhone'),
   extractFunction('isPhoneVerificationPageReady'),
+  extractFunction('isInsideHiddenPhoneControl'),
+  extractFunction('summarizePhoneInputCandidate'),
+  extractFunction('isUsablePhoneInputElement'),
+  extractFunction('findUsablePhoneInput'),
+  extractFunction('getLoginPhoneInput'),
   extractFunction('inspectLoginAuthState'),
   extractFunction('normalizeStep6Snapshot'),
 ].join('\n');
@@ -73,6 +78,9 @@ const document = {
   },
   querySelector() {
     return null;
+  },
+  querySelectorAll() {
+    return ${JSON.stringify(overrides.phoneInputs || [])};
   },
 };
 
@@ -100,6 +108,22 @@ function findLoginEntryTrigger() {
   return ${JSON.stringify(overrides.loginEntryTrigger || null)};
 }
 
+function isLoginPhoneUsernameKind() {
+  return ${JSON.stringify(Boolean(overrides.loginPhoneUsernameKind))};
+}
+
+function isLoginPhoneEntryPageText() {
+  return ${JSON.stringify(Boolean(overrides.loginPhoneEntryPageText))};
+}
+
+function findLoginPhoneEntryTrigger() {
+  return ${JSON.stringify(overrides.phoneEntryTrigger || null)};
+}
+
+function findLoginMoreOptionsTrigger() {
+  return ${JSON.stringify(overrides.moreOptionsTrigger || null)};
+}
+
 function getLoginSubmitButton() {
   return ${JSON.stringify(overrides.submitButton || null)};
 }
@@ -110,6 +134,10 @@ function isVerificationPageStillVisible() {
 
 function isAddPhonePageReady() {
   return ${JSON.stringify(Boolean(overrides.addPhonePage))};
+}
+
+function isAddEmailPageReady() {
+  return ${JSON.stringify(Boolean(overrides.addEmailPage))};
 }
 
 function isVisibleElement() {

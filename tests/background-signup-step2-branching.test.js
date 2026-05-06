@@ -39,6 +39,8 @@ test('step 2 completes with password step skipped when landing on email verifica
       step: 2,
       payload: {
         email: 'user@example.com',
+        accountIdentifierType: 'email',
+        accountIdentifier: 'user@example.com',
         nextSignupState: 'verification_page',
         nextSignupUrl: 'https://auth.openai.com/email-verification',
         skippedPasswordStep: true,
@@ -76,6 +78,8 @@ test('step 2 keeps password flow when landing on password page', async () => {
       step: 2,
       payload: {
         email: 'user@example.com',
+        accountIdentifierType: 'email',
+        accountIdentifier: 'user@example.com',
         nextSignupState: 'password_page',
         nextSignupUrl: 'https://auth.openai.com/create-account/password',
         skippedPasswordStep: false,
@@ -126,6 +130,248 @@ test('step 2 stops with an explicit error instead of silently skipping 3/4/5 on 
   assert.ok(logs.some((item) => /3\/4\/5/.test(item.message)));
 });
 
+test('step 2 uses phone activation when resolved signup method is phone', async () => {
+  const completedPayloads = [];
+  const sequence = [];
+  const sentPayloads = [];
+  const landingOptions = [];
+  const activation = {
+    activationId: 'signup-activation',
+    phoneNumber: '66959916439',
+    provider: 'hero-sms',
+    serviceCode: 'dr',
+    countryId: 52,
+    countryLabel: 'Thailand',
+    successfulUses: 0,
+    maxUses: 3,
+  };
+
+  const executor = step2Api.createStep2Executor({
+    addLog: async () => {},
+    chrome: { tabs: { update: async () => {} } },
+    completeStepFromBackground: async (step, payload) => {
+      completedPayloads.push({ step, payload });
+    },
+    ensureContentScriptReadyOnTab: async () => {},
+    ensureSignupEntryPageReady: async () => ({ tabId: 14 }),
+    ensureSignupPostEmailPageReadyInTab: async () => {
+      throw new Error('email landing helper should not be used for phone signup');
+    },
+    ensureSignupPostIdentityPageReadyInTab: async (_tabId, _step, options) => {
+      landingOptions.push(options);
+      return {
+        state: 'phone_verification_page',
+        url: 'https://auth.openai.com/phone-verification',
+      };
+    },
+    getTabId: async () => 14,
+    isTabAlive: async () => true,
+    phoneVerificationHelpers: {
+      prepareSignupPhoneActivation: async () => {
+        sequence.push('prepareSignupPhoneActivation');
+        return activation;
+      },
+      cancelSignupPhoneActivation: async () => {
+        throw new Error('activation should not be cancelled on success');
+      },
+    },
+    resolveSignupMethod: () => 'phone',
+    resolveSignupEmailForFlow: async () => {
+      throw new Error('email resolver should not run for phone signup');
+    },
+    sendToContentScriptResilient: async (_source, message) => {
+      if (message.type === 'ENSURE_SIGNUP_PHONE_ENTRY_READY') {
+        sequence.push('ensureSignupPhoneEntryReady');
+        return {
+          ready: true,
+          state: 'phone_entry',
+          url: 'https://chatgpt.com/',
+        };
+      }
+      sequence.push('submitSignupPhone');
+      sentPayloads.push(message.payload);
+      return { submitted: true };
+    },
+    SIGNUP_PAGE_INJECT_FILES: [],
+  });
+
+  await executor.executeStep2({ signupMethod: 'phone' });
+
+  assert.deepStrictEqual(sequence, [
+    'ensureSignupPhoneEntryReady',
+    'prepareSignupPhoneActivation',
+    'submitSignupPhone',
+  ]);
+  assert.deepStrictEqual(sentPayloads, [
+    {
+      signupMethod: 'phone',
+      phoneNumber: '66959916439',
+      countryId: 52,
+      countryLabel: 'Thailand',
+    },
+  ]);
+  assert.deepStrictEqual(landingOptions, [
+    {
+      contactVerificationState: 'phone_verification_page',
+      skipUrlWait: false,
+    },
+  ]);
+  assert.deepStrictEqual(completedPayloads, [
+    {
+      step: 2,
+      payload: {
+        accountIdentifierType: 'phone',
+        accountIdentifier: '66959916439',
+        signupPhoneNumber: '66959916439',
+        signupPhoneActivation: activation,
+        nextSignupState: 'phone_verification_page',
+        nextSignupUrl: 'https://auth.openai.com/phone-verification',
+        skippedPasswordStep: true,
+      },
+    },
+  ]);
+});
+
+test('step 2 reuses existing signup phone activation without acquiring a new number', async () => {
+  const completedPayloads = [];
+  const sequence = [];
+  const sentPayloads = [];
+  const activation = {
+    activationId: 'existing-signup-activation',
+    phoneNumber: '+446700000001',
+    provider: 'hero-sms',
+    serviceCode: 'dr',
+    countryId: 16,
+    countryLabel: 'United Kingdom',
+  };
+
+  const executor = step2Api.createStep2Executor({
+    addLog: async () => {},
+    chrome: { tabs: { update: async () => {} } },
+    completeStepFromBackground: async (step, payload) => {
+      completedPayloads.push({ step, payload });
+    },
+    ensureContentScriptReadyOnTab: async () => {},
+    ensureSignupEntryPageReady: async () => ({ tabId: 15 }),
+    ensureSignupPostIdentityPageReadyInTab: async () => ({
+      state: 'phone_verification_page',
+      url: 'https://auth.openai.com/phone-verification',
+    }),
+    getTabId: async () => 15,
+    isTabAlive: async () => true,
+    phoneVerificationHelpers: {
+      normalizeActivation: (record) => record,
+      prepareSignupPhoneActivation: async () => {
+        throw new Error('prepareSignupPhoneActivation should not run when signup activation already exists');
+      },
+      cancelSignupPhoneActivation: async () => {
+        throw new Error('activation should not be cancelled on success');
+      },
+    },
+    resolveSignupMethod: () => 'phone',
+    resolveSignupEmailForFlow: async () => {
+      throw new Error('email resolver should not run for phone signup');
+    },
+    sendToContentScriptResilient: async (_source, message) => {
+      if (message.type === 'ENSURE_SIGNUP_PHONE_ENTRY_READY') {
+        sequence.push('ensureSignupPhoneEntryReady');
+        return { ready: true, state: 'phone_entry' };
+      }
+      sequence.push('submitSignupPhone');
+      sentPayloads.push(message.payload);
+      return { submitted: true };
+    },
+    SIGNUP_PAGE_INJECT_FILES: [],
+  });
+
+  await executor.executeStep2({
+    signupMethod: 'phone',
+    signupPhoneActivation: activation,
+  });
+
+  assert.deepStrictEqual(sequence, [
+    'ensureSignupPhoneEntryReady',
+    'submitSignupPhone',
+  ]);
+  assert.deepStrictEqual(sentPayloads, [
+    {
+      signupMethod: 'phone',
+      phoneNumber: '+446700000001',
+      countryId: 16,
+      countryLabel: 'United Kingdom',
+    },
+  ]);
+  assert.equal(completedPayloads[0].payload.signupPhoneActivation, activation);
+});
+
+test('step 2 submits manual signup phone without acquiring a number', async () => {
+  const completedPayloads = [];
+  const sentPayloads = [];
+
+  const executor = step2Api.createStep2Executor({
+    addLog: async () => {},
+    chrome: { tabs: { update: async () => {} } },
+    completeStepFromBackground: async (step, payload) => {
+      completedPayloads.push({ step, payload });
+    },
+    ensureContentScriptReadyOnTab: async () => {},
+    ensureSignupEntryPageReady: async () => ({ tabId: 16 }),
+    ensureSignupPostIdentityPageReadyInTab: async () => ({
+      state: 'phone_verification_page',
+      url: 'https://auth.openai.com/phone-verification',
+    }),
+    getTabId: async () => 16,
+    isTabAlive: async () => true,
+    phoneVerificationHelpers: {
+      prepareSignupPhoneActivation: async () => {
+        throw new Error('prepareSignupPhoneActivation should not run for manual signup phone');
+      },
+    },
+    resolveSignupMethod: () => 'phone',
+    resolveSignupEmailForFlow: async () => {
+      throw new Error('email resolver should not run for phone signup');
+    },
+    sendToContentScriptResilient: async (_source, message) => {
+      if (message.type === 'ENSURE_SIGNUP_PHONE_ENTRY_READY') {
+        return { ready: true, state: 'phone_entry' };
+      }
+      sentPayloads.push(message.payload);
+      return { submitted: true };
+    },
+    SIGNUP_PAGE_INJECT_FILES: [],
+  });
+
+  await executor.executeStep2({
+    signupMethod: 'phone',
+    signupPhoneNumber: '+446700000002',
+    accountIdentifierType: 'phone',
+    accountIdentifier: '+446700000002',
+  });
+
+  assert.deepStrictEqual(sentPayloads, [
+    {
+      signupMethod: 'phone',
+      phoneNumber: '+446700000002',
+      countryId: null,
+      countryLabel: '',
+    },
+  ]);
+  assert.deepStrictEqual(completedPayloads, [
+    {
+      step: 2,
+      payload: {
+        accountIdentifierType: 'phone',
+        accountIdentifier: '+446700000002',
+        signupPhoneNumber: '+446700000002',
+        signupPhoneActivation: null,
+        nextSignupState: 'phone_verification_page',
+        nextSignupUrl: 'https://auth.openai.com/phone-verification',
+        skippedPasswordStep: true,
+      },
+    },
+  ]);
+});
+
 test('signup flow helper recognizes email verification page as post-email landing page', async () => {
   let ensureCalls = 0;
   let passwordReadyChecks = 0;
@@ -173,6 +419,109 @@ test('signup flow helper recognizes email verification page as post-email landin
   });
   assert.equal(ensureCalls, 1);
   assert.equal(passwordReadyChecks, 0);
+});
+
+test('signup flow helper falls back to password DOM when post-identity URL does not match', async () => {
+  let ensureCalls = 0;
+  let passwordReadyChecks = 0;
+  const logs = [];
+
+  const helpers = signupFlowApi.createSignupFlowHelpers({
+    addLog: async (message, level = 'info') => {
+      logs.push({ message, level });
+    },
+    buildGeneratedAliasEmail: () => '',
+    chrome: {
+      tabs: {
+        get: async () => ({
+          id: 22,
+          url: 'https://auth.openai.com/log-in/password',
+        }),
+      },
+    },
+    ensureContentScriptReadyOnTab: async () => {
+      ensureCalls += 1;
+    },
+    ensureHotmailAccountForFlow: async () => ({}),
+    ensureLuckmailPurchaseForFlow: async () => ({}),
+    isGeneratedAliasProvider: () => false,
+    isHotmailProvider: () => false,
+    isLuckmailProvider: () => false,
+    isSignupEmailVerificationPageUrl: () => false,
+    isSignupPasswordPageUrl: () => false,
+    reuseOrCreateTab: async () => 22,
+    sendToContentScriptResilient: async (_source, message) => {
+      if (message.type === 'ENSURE_SIGNUP_PASSWORD_PAGE_READY') {
+        passwordReadyChecks += 1;
+        return {
+          ready: true,
+          state: 'password_page',
+          url: 'https://auth.openai.com/log-in/password',
+        };
+      }
+      throw new Error(`Unexpected message: ${message.type}`);
+    },
+    setEmailState: async () => {},
+    SIGNUP_ENTRY_URL: 'https://chatgpt.com/',
+    SIGNUP_PAGE_INJECT_FILES: [],
+    waitForTabUrlMatch: async () => null,
+  });
+
+  const result = await helpers.ensureSignupPostEmailPageReadyInTab(22, 2);
+
+  assert.deepStrictEqual(result, {
+    ready: true,
+    state: 'password_page',
+    url: 'https://auth.openai.com/log-in/password',
+    detectedBy: 'content_script_password_page',
+  });
+  assert.equal(ensureCalls, 1);
+  assert.equal(passwordReadyChecks, 1);
+  assert.equal(logs.some((entry) => /URL 跳转超时/.test(entry.message)), true);
+});
+
+test('signup flow helper maps contact verification to phone verification in phone signup mode', async () => {
+  const helpers = signupFlowApi.createSignupFlowHelpers({
+    addLog: async () => {},
+    buildGeneratedAliasEmail: () => '',
+    chrome: {
+      tabs: {
+        get: async () => ({
+          id: 23,
+          url: 'https://auth.openai.com/contact-verification',
+        }),
+      },
+    },
+    ensureContentScriptReadyOnTab: async () => {},
+    ensureHotmailAccountForFlow: async () => ({}),
+    ensureLuckmailPurchaseForFlow: async () => ({}),
+    isGeneratedAliasProvider: () => false,
+    isHotmailProvider: () => false,
+    isLuckmailProvider: () => false,
+    isSignupEmailVerificationPageUrl: (url) => /\/(?:email|contact)-verification(?:[/?#]|$)/i.test(url || ''),
+    isSignupPasswordPageUrl: () => false,
+    reuseOrCreateTab: async () => 23,
+    sendToContentScriptResilient: async () => {
+      throw new Error('password DOM fallback should not be needed');
+    },
+    setEmailState: async () => {},
+    SIGNUP_ENTRY_URL: 'https://chatgpt.com/',
+    SIGNUP_PAGE_INJECT_FILES: [],
+    waitForTabUrlMatch: async () => ({
+      id: 23,
+      url: 'https://auth.openai.com/contact-verification',
+    }),
+  });
+
+  const result = await helpers.ensureSignupPostEmailPageReadyInTab(23, 2, {
+    contactVerificationState: 'phone_verification_page',
+  });
+
+  assert.deepStrictEqual(result, {
+    ready: true,
+    state: 'phone_verification_page',
+    url: 'https://auth.openai.com/contact-verification',
+  });
 });
 
 test('signup flow helper reuses existing managed alias email when it is still compatible', async () => {
@@ -306,4 +655,16 @@ test('signup flow helper rewrites retryable step 3 finalize transport timeout in
       level: 'warn',
     },
   ]);
+});
+
+test('content signup page step 2 routes phone signup payload away from email submission', () => {
+  const contentSource = fs.readFileSync('content/signup-page.js', 'utf8');
+  assert.match(
+    contentSource,
+    /if\s*\(\s*payload\?\.signupMethod\s*===\s*['"]phone['"]\s*\|\|\s*payload\?\.phoneNumber\s*\)/
+  );
+  assert.match(
+    contentSource,
+    /return\s+submitSignupPhoneNumberAndContinue\(payload\)/
+  );
 });

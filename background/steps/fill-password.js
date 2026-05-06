@@ -15,9 +15,31 @@
       SIGNUP_PAGE_INJECT_FILES,
     } = deps;
 
+    function isPhoneSignupState(state = {}) {
+      const signupMethod = String(state?.resolvedSignupMethod || state?.signupMethod || '').trim().toLowerCase();
+      const accountIdentifierType = String(state?.accountIdentifierType || '').trim().toLowerCase();
+      return signupMethod === 'phone'
+        || accountIdentifierType === 'phone'
+        || Boolean(String(state?.signupPhoneNumber || '').trim())
+        || Boolean(state?.signupPhoneActivation)
+        || Boolean(state?.signupPhoneCompletedActivation);
+    }
+
+    function getSignupPhoneIdentifier(state = {}) {
+      const accountIdentifierType = String(state?.accountIdentifierType || '').trim().toLowerCase();
+      return String(
+        state?.signupPhoneNumber
+        || (accountIdentifierType === 'phone' ? state?.accountIdentifier : '')
+        || state?.signupPhoneActivation?.phoneNumber
+        || state?.signupPhoneCompletedActivation?.phoneNumber
+        || ''
+      ).trim();
+    }
+
     async function executeStep3(state) {
-      const resolvedEmail = state.email;
-      if (!resolvedEmail) {
+      const resolvedEmail = String(state.email || '').trim();
+      const phoneSignup = isPhoneSignupState(state);
+      if (!resolvedEmail && !phoneSignup) {
         throw new Error('缺少邮箱地址，请先完成步骤 2。');
       }
 
@@ -29,9 +51,11 @@
       const password = state.customPassword || state.password || generatePassword();
       await setPasswordState(password);
 
-      const accounts = state.accounts || [];
-      accounts.push({ email: resolvedEmail, createdAt: new Date().toISOString() });
-      await setState({ accounts });
+      if (resolvedEmail) {
+        const accounts = Array.isArray(state.accounts) ? [...state.accounts] : [];
+        accounts.push({ email: resolvedEmail, createdAt: new Date().toISOString() });
+        await setState({ accounts });
+      }
 
       await chrome.tabs.update(signupTabId, { active: true });
       await ensureContentScriptReadyOnTab('signup-page', signupTabId, {
@@ -42,14 +66,28 @@
         logMessage: '步骤 3：密码页内容脚本未就绪，正在等待页面恢复...',
       });
 
+      const phoneIdentifier = phoneSignup ? getSignupPhoneIdentifier(state) : '';
+      const identityLabel = resolvedEmail
+        ? `邮箱为 ${resolvedEmail}`
+        : `手机号注册${phoneIdentifier ? `，手机号为 ${phoneIdentifier}` : ''}`;
       await addLog(
-        `步骤 3：正在填写密码，邮箱为 ${resolvedEmail}，密码为${state.customPassword ? '自定义' : '自动生成'}（${password.length} 位）`
+        `步骤 3：正在填写密码，${identityLabel}，密码为${state.customPassword ? '自定义' : '自动生成'}（${password.length} 位）`
       );
+      const payload = { password };
+      if (resolvedEmail) {
+        payload.email = resolvedEmail;
+      } else if (phoneSignup) {
+        payload.signupMethod = 'phone';
+        payload.accountIdentifierType = 'phone';
+        if (phoneIdentifier) {
+          payload.phoneNumber = phoneIdentifier;
+        }
+      }
       await sendToContentScript('signup-page', {
         type: 'EXECUTE_STEP',
         step: 3,
         source: 'background',
-        payload: { email: resolvedEmail, password },
+        payload,
       });
     }
 

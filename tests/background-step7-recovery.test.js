@@ -85,7 +85,13 @@ test('step 8 submits login verification directly without replaying step 7', asyn
     { step8VerificationTargetEmail: 'display.user@example.com' },
   ]);
   assert.deepStrictEqual(calls.ensureReadyOptions, [
-    { visibleStep: 8, authLoginStep: 7, timeoutMs: 5000 },
+    {
+      visibleStep: 8,
+      authLoginStep: 7,
+      allowPhoneVerificationPage: true,
+      allowAddEmailPage: true,
+      timeoutMs: 5000,
+    },
   ]);
   assert.equal(calls.resolveOptions.completionStep, 8);
 });
@@ -155,7 +161,13 @@ test('Plus login-code step reuses step 8 verification logic but completes visibl
   assert.equal(resolvedStep, 8);
   assert.equal(resolvedOptions.completionStep, 11);
   assert.equal(resolvedOptions.targetEmail, 'plus.user@example.com');
-  assert.deepStrictEqual(readyOptions, { visibleStep: 11, authLoginStep: 10, timeoutMs: 9000 });
+  assert.deepStrictEqual(readyOptions, {
+    visibleStep: 11,
+    authLoginStep: 10,
+    allowPhoneVerificationPage: true,
+    allowAddEmailPage: true,
+    timeoutMs: 9000,
+  });
   assert.deepStrictEqual(remainingStepCalls, [11, 11]);
 });
 

@@ -1030,6 +1030,73 @@ test('verification flow waits during resend cooldown instead of tight-looping', 
   assert.ok(sleepCalls[0] >= 1000);
 });
 
+test('verification flow suppresses immediate step 8 resend during the initial observation window', async () => {
+  const sleepCalls = [];
+  const resendMessages = [];
+  let pollCalls = 0;
+
+  const helpers = api.createVerificationFlowHelpers({
+    addLog: async () => {},
+    chrome: { tabs: { update: async () => {} } },
+    CLOUDFLARE_TEMP_EMAIL_PROVIDER: 'cloudflare-temp-email',
+    completeStepFromBackground: async () => {},
+    confirmCustomVerificationStepBypassRequest: async () => ({ confirmed: true }),
+    getHotmailVerificationPollConfig: () => ({}),
+    getHotmailVerificationRequestTimestamp: () => 0,
+    getState: async () => ({}),
+    getTabId: async () => 1,
+    HOTMAIL_PROVIDER: 'hotmail-api',
+    isStopError: () => false,
+    LUCKMAIL_PROVIDER: 'luckmail-api',
+    MAIL_2925_VERIFICATION_INTERVAL_MS: 15000,
+    MAIL_2925_VERIFICATION_MAX_ATTEMPTS: 15,
+    pollCloudflareTempEmailVerificationCode: async () => ({}),
+    pollHotmailVerificationCode: async () => ({}),
+    pollLuckmailVerificationCode: async () => ({}),
+    sendToContentScript: async (_source, message) => {
+      if (message.type === 'RESEND_VERIFICATION_CODE') {
+        resendMessages.push(message);
+      }
+      return {};
+    },
+    sendToMailContentScriptResilient: async (_mail, message) => {
+      if (message.type !== 'POLL_EMAIL') {
+        return {};
+      }
+      pollCalls += 1;
+      return pollCalls === 1
+        ? {}
+        : { code: '654321', emailTimestamp: 123 };
+    },
+    setState: async () => {},
+    setStepStatus: async () => {},
+    sleepWithStop: async (ms) => {
+      sleepCalls.push(ms);
+    },
+    throwIfStopped: () => {},
+    VERIFICATION_POLL_MAX_ROUNDS: 5,
+  });
+
+  const result = await helpers.pollFreshVerificationCodeWithResendInterval(
+    8,
+    {
+      email: 'user@example.com',
+      lastLoginCode: null,
+    },
+    { provider: 'qq', label: 'QQ 邮箱' },
+    {
+      maxResendRequests: 1,
+      resendIntervalMs: 25000,
+    }
+  );
+
+  assert.equal(result.code, '654321');
+  assert.equal(pollCalls, 2);
+  assert.equal(resendMessages.length, 0);
+  assert.ok(sleepCalls.length >= 1);
+  assert.ok(sleepCalls[0] >= 1000);
+});
+
 test('verification flow clicks resend before waiting for the next LuckMail /code retry', async () => {
   const events = [];
   let pollCalls = 0;
@@ -1103,71 +1170,81 @@ test('verification flow notifies onResendRequestedAt when resend is triggered', 
   const resendRequestedAtCalls = [];
   const stateUpdates = [];
   let pollCalls = 0;
+  const originalNow = Date.now;
+  let now = 1700000000000;
+  Date.now = () => now;
 
-  const helpers = api.createVerificationFlowHelpers({
-    addLog: async () => {},
-    chrome: { tabs: { update: async () => {} } },
-    CLOUDFLARE_TEMP_EMAIL_PROVIDER: 'cloudflare-temp-email',
-    completeStepFromBackground: async () => {},
-    confirmCustomVerificationStepBypassRequest: async () => ({ confirmed: true }),
-    getHotmailVerificationPollConfig: () => ({}),
-    getHotmailVerificationRequestTimestamp: () => 0,
-    getState: async () => ({}),
-    getTabId: async () => 1,
-    HOTMAIL_PROVIDER: 'hotmail-api',
-    isStopError: () => false,
-    LUCKMAIL_PROVIDER: 'luckmail-api',
-    MAIL_2925_VERIFICATION_INTERVAL_MS: 15000,
-    MAIL_2925_VERIFICATION_MAX_ATTEMPTS: 15,
-    pollCloudflareTempEmailVerificationCode: async () => ({}),
-    pollHotmailVerificationCode: async () => ({}),
-    pollLuckmailVerificationCode: async () => ({}),
-    sendToContentScript: async (_source, message) => {
-      if (message.type === 'RESEND_VERIFICATION_CODE') {
-        return { resent: true };
-      }
-      return {};
-    },
-    sendToMailContentScriptResilient: async (_mail, message) => {
-      if (message.type !== 'POLL_EMAIL') {
+  try {
+    const helpers = api.createVerificationFlowHelpers({
+      addLog: async () => {},
+      chrome: { tabs: { update: async () => {} } },
+      CLOUDFLARE_TEMP_EMAIL_PROVIDER: 'cloudflare-temp-email',
+      completeStepFromBackground: async () => {},
+      confirmCustomVerificationStepBypassRequest: async () => ({ confirmed: true }),
+      getHotmailVerificationPollConfig: () => ({}),
+      getHotmailVerificationRequestTimestamp: () => 0,
+      getState: async () => ({}),
+      getTabId: async () => 1,
+      HOTMAIL_PROVIDER: 'hotmail-api',
+      isStopError: () => false,
+      LUCKMAIL_PROVIDER: 'luckmail-api',
+      MAIL_2925_VERIFICATION_INTERVAL_MS: 15000,
+      MAIL_2925_VERIFICATION_MAX_ATTEMPTS: 15,
+      pollCloudflareTempEmailVerificationCode: async () => ({}),
+      pollHotmailVerificationCode: async () => ({}),
+      pollLuckmailVerificationCode: async () => ({}),
+      sendToContentScript: async (_source, message) => {
+        if (message.type === 'RESEND_VERIFICATION_CODE') {
+          return { resent: true };
+        }
         return {};
-      }
-      pollCalls += 1;
-      return pollCalls === 1
-        ? {}
-        : { code: '654321', emailTimestamp: 123 };
-    },
-    setState: async (payload) => {
-      stateUpdates.push(payload);
-    },
-    setStepStatus: async () => {},
-    sleepWithStop: async () => {},
-    throwIfStopped: () => {},
-    VERIFICATION_POLL_MAX_ROUNDS: 5,
-  });
-
-  await helpers.resolveVerificationStep(
-    8,
-    {
-      email: 'user@example.com',
-      lastLoginCode: null,
-    },
-    { provider: 'qq', label: 'QQ 邮箱' },
-    {
-      maxResendRequests: 1,
-      resendIntervalMs: 25000,
-      onResendRequestedAt: async (requestedAt) => {
-        resendRequestedAtCalls.push(Number(requestedAt) || 0);
       },
-    }
-  );
+      sendToMailContentScriptResilient: async (_mail, message) => {
+        if (message.type !== 'POLL_EMAIL') {
+          return {};
+        }
+        pollCalls += 1;
+        return resendRequestedAtCalls.length === 0
+          ? {}
+          : { code: '654321', emailTimestamp: 123 };
+      },
+      setState: async (payload) => {
+        stateUpdates.push(payload);
+      },
+      setStepStatus: async () => {},
+      sleepWithStop: async (ms) => {
+        now += ms;
+      },
+      throwIfStopped: () => {},
+      VERIFICATION_POLL_MAX_ROUNDS: 5,
+    });
 
-  assert.equal(resendRequestedAtCalls.length >= 1, true);
-  assert.equal(resendRequestedAtCalls[0] > 0, true);
-  assert.equal(
-    stateUpdates.some((payload) => Number(payload?.loginVerificationRequestedAt) > 0),
-    true
-  );
+    await helpers.resolveVerificationStep(
+      8,
+      {
+        email: 'user@example.com',
+        lastLoginCode: null,
+      },
+      { provider: 'qq', label: 'QQ 邮箱' },
+      {
+        maxResendRequests: 1,
+        resendIntervalMs: 25000,
+        onResendRequestedAt: async (requestedAt) => {
+          resendRequestedAtCalls.push(Number(requestedAt) || 0);
+        },
+      }
+    );
+
+    assert.equal(resendRequestedAtCalls.length >= 1, true);
+    assert.equal(resendRequestedAtCalls[0] > 0, true);
+    assert.equal(pollCalls > 1, true);
+    assert.equal(
+      stateUpdates.some((payload) => Number(payload?.loginVerificationRequestedAt) > 0),
+      true
+    );
+  } finally {
+    Date.now = originalNow;
+  }
 });
 
 test('verification flow uses resilient signup-page transport when submitting verification code', async () => {

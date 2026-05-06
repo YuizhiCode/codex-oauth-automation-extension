@@ -16,6 +16,36 @@ test('navigation utils module exposes a factory', () => {
   assert.equal(typeof api?.createNavigationUtils, 'function');
 });
 
+test('navigation utils recognize login password page as signup password landing', () => {
+  const source = fs.readFileSync('background/navigation-utils.js', 'utf8');
+  const globalScope = {};
+
+  const api = new Function('self', `${source}; return self.MultiPageBackgroundNavigationUtils;`)(globalScope);
+  const utils = api.createNavigationUtils({
+    DEFAULT_CODEX2API_URL: 'http://localhost:8080/admin/accounts',
+    DEFAULT_SUB2API_URL: 'https://sub.example.com/admin/accounts',
+    normalizeLocalCpaStep9Mode: (value) => value,
+  });
+
+  assert.equal(utils.isSignupPasswordPageUrl('https://auth.openai.com/log-in/password'), true);
+  assert.equal(utils.isSignupPasswordPageUrl('https://auth.openai.com/create-account/password'), true);
+});
+
+test('navigation utils recognize contact verification page as verification landing', () => {
+  const source = fs.readFileSync('background/navigation-utils.js', 'utf8');
+  const globalScope = {};
+
+  const api = new Function('self', `${source}; return self.MultiPageBackgroundNavigationUtils;`)(globalScope);
+  const utils = api.createNavigationUtils({
+    DEFAULT_CODEX2API_URL: 'http://localhost:8080/admin/accounts',
+    DEFAULT_SUB2API_URL: 'https://sub.example.com/admin/accounts',
+    normalizeLocalCpaStep9Mode: (value) => value,
+  });
+
+  assert.equal(utils.isSignupEmailVerificationPageUrl('https://auth.openai.com/contact-verification'), true);
+  assert.equal(utils.isSignupEmailVerificationPageUrl('https://auth.openai.com/email-verification'), true);
+});
+
 test('navigation utils treat 126 mail hosts as part of the shared NetEase mail family', () => {
   const source = fs.readFileSync('background/navigation-utils.js', 'utf8');
   const globalScope = {};

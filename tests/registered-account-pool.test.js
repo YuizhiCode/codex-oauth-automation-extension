@@ -256,6 +256,27 @@ test('registered account pool keeps an account even when password is missing', a
   assert.equal(logs.some(({ message }) => /无法写入已注册账号池/.test(message)), false);
 });
 
+test('phone signup does not enter the registered account reuse pool', async () => {
+  const api = createApi({
+    email: '',
+    password: '',
+    customPassword: '',
+    signupMethod: 'phone',
+    resolvedSignupMethod: 'phone',
+    accountIdentifierType: 'phone',
+    accountIdentifier: '+447700900123',
+    signupPhoneNumber: '+447700900123',
+    accounts: [],
+  });
+
+  const record = await api.saveRegisteredAccountAfterProfileSuccess();
+  const { currentState, logs } = api.snapshot();
+
+  assert.equal(record, null);
+  assert.equal(currentState.accounts.length, 0);
+  assert.equal(logs.some(({ message }) => /手机号注册.*复用账号池|手机号注册不进入待复用账号池/.test(message)), true);
+});
+
 test('registered account resume restores the saved mailbox provider before continuing', async () => {
   const api = createApi({
     mailProvider: '163',

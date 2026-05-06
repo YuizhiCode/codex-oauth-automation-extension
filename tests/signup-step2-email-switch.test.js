@@ -136,6 +136,8 @@ ${extractConst('SIGNUP_PHONE_INPUT_SELECTOR')}
 ${extractConst('SIGNUP_SWITCH_TO_EMAIL_PATTERN')}
 ${extractConst('SIGNUP_SWITCH_ACTION_PATTERN')}
 ${extractConst('SIGNUP_EMAIL_ACTION_PATTERN')}
+${extractConst('SIGNUP_PHONE_ACTION_PATTERN')}
+${extractConst('SIGNUP_SWITCH_TO_PHONE_PATTERN')}
 ${extractConst('SIGNUP_WORK_EMAIL_PATTERN')}
 
 function isVisibleElement(el) {
@@ -196,6 +198,7 @@ async function sleep(ms) {
 ${extractFunction('getSignupEmailInput')}
 ${extractFunction('getSignupPhoneInput')}
 ${extractFunction('findSignupUseEmailTrigger')}
+${extractFunction('findSignupUsePhoneTrigger')}
 ${extractFunction('getSignupEmailContinueButton')}
 ${extractFunction('inspectSignupEntryState')}
 ${extractFunction('waitForSignupEntryState')}
@@ -309,6 +312,8 @@ ${extractConst('SIGNUP_PHONE_INPUT_SELECTOR')}
 ${extractConst('SIGNUP_SWITCH_TO_EMAIL_PATTERN')}
 ${extractConst('SIGNUP_SWITCH_ACTION_PATTERN')}
 ${extractConst('SIGNUP_EMAIL_ACTION_PATTERN')}
+${extractConst('SIGNUP_PHONE_ACTION_PATTERN')}
+${extractConst('SIGNUP_SWITCH_TO_PHONE_PATTERN')}
 ${extractConst('SIGNUP_WORK_EMAIL_PATTERN')}
 
 function isVisibleElement(el) {
@@ -369,6 +374,7 @@ async function sleep(ms) {
 ${extractFunction('getSignupEmailInput')}
 ${extractFunction('getSignupPhoneInput')}
 ${extractFunction('findSignupUseEmailTrigger')}
+${extractFunction('findSignupUsePhoneTrigger')}
 ${extractFunction('getSignupEmailContinueButton')}
 ${extractFunction('inspectSignupEntryState')}
 ${extractFunction('waitForSignupEntryState')}

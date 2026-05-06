@@ -2438,6 +2438,57 @@
       return result || {};
     }
 
+    async function submitSignupPhoneVerificationCode(tabId, code, options = {}) {
+      const visibleStep = 4;
+      const timeoutMs = typeof getOAuthFlowStepTimeoutMs === 'function'
+        ? await getOAuthFlowStepTimeoutMs(45000, { step: visibleStep, actionLabel: '提交注册手机验证码' })
+        : 45000;
+      const result = await sendToContentScriptResilient('signup-page', {
+        type: 'SUBMIT_PHONE_VERIFICATION_CODE',
+        step: visibleStep,
+        source: 'background',
+        payload: {
+          code,
+          purpose: 'signup',
+          visibleStep,
+          signupProfile: options.signupProfile || null,
+        },
+      }, {
+        timeoutMs,
+        responseTimeoutMs: timeoutMs,
+        retryDelayMs: 600,
+        logMessage: '步骤 4：等待注册手机验证码页面就绪后填写短信验证码...',
+      });
+
+      if (result?.error) {
+        throw new Error(result.error);
+      }
+      return result || {};
+    }
+
+    async function resendSignupPhoneVerificationCode(tabId) {
+      const visibleStep = 4;
+      const timeoutMs = typeof getOAuthFlowStepTimeoutMs === 'function'
+        ? await getOAuthFlowStepTimeoutMs(65000, { step: visibleStep, actionLabel: '重新发送注册手机验证码' })
+        : 65000;
+      const result = await sendToContentScriptResilient('signup-page', {
+        type: 'RESEND_VERIFICATION_CODE',
+        step: visibleStep,
+        source: 'background',
+        payload: {},
+      }, {
+        timeoutMs,
+        responseTimeoutMs: timeoutMs,
+        retryDelayMs: 600,
+        logMessage: '步骤 4：等待注册手机验证码重发按钮出现...',
+      });
+
+      if (result?.error) {
+        throw new Error(result.error);
+      }
+      return result || {};
+    }
+
     async function returnToAddPhone(tabId) {
       const timeoutMs = typeof getOAuthFlowStepTimeoutMs === 'function'
         ? await getOAuthFlowStepTimeoutMs(30000, { step: 9, actionLabel: 'return to add-phone page' })
@@ -2478,6 +2529,514 @@
 
     async function clearReusableActivation() {
       await persistReusableActivation(null);
+    }
+
+    async function clearSignupPhoneRegistrationState(reason = '') {
+      const state = await getState();
+      const updates = {
+        signupPhoneNumber: '',
+        signupPhoneActivation: null,
+        signupPhoneVerificationRequestedAt: null,
+        signupPhoneVerificationPurpose: '',
+        [PHONE_VERIFICATION_CODE_STATE_KEY]: '',
+      };
+      if (String(state?.accountIdentifierType || '').trim().toLowerCase() === 'phone') {
+        updates.accountIdentifier = '';
+      }
+      await setState(updates);
+      if (reason) {
+        await addLog(reason, 'warn');
+      }
+    }
+
+    async function prepareSignupPhoneActivation(state = {}, options = {}) {
+      const activation = await requestPhoneActivation(state, options);
+      const normalizedActivation = normalizeActivation(activation);
+      if (!normalizedActivation) {
+        throw new Error('步骤 2：接码平台返回的手机号订单无效。');
+      }
+      await setState({
+        signupPhoneNumber: normalizedActivation.phoneNumber,
+        signupPhoneActivation: normalizedActivation,
+        signupPhoneVerificationRequestedAt: null,
+        signupPhoneVerificationPurpose: 'signup',
+        accountIdentifierType: 'phone',
+        accountIdentifier: normalizedActivation.phoneNumber,
+      });
+      return normalizedActivation;
+    }
+
+    async function prepareLoginPhoneActivation(state = {}, options = {}) {
+      const visibleStep = Math.floor(Number(options?.visibleStep || options?.step) || 0) || 8;
+      const preferredActivation = normalizeActivation(
+        options?.activation
+        || state?.signupPhoneCompletedActivation
+        || state?.signupPhoneActivation
+      );
+      if (!preferredActivation) {
+        throw new Error(`步骤 ${visibleStep}：缺少已注册手机号激活记录，无法继续手机号登录验证码流程。`);
+      }
+
+      const activeActivation = normalizeActivation(state?.signupPhoneActivation);
+      if (activeActivation && activeActivation.activationId === preferredActivation.activationId) {
+        await setState({
+          signupPhoneNumber: activeActivation.phoneNumber,
+          signupPhoneVerificationPurpose: 'login',
+        });
+        return activeActivation;
+      }
+
+      const reactivated = await reactivatePhoneActivation(state, preferredActivation);
+      const normalizedActivation = normalizeActivation(reactivated);
+      if (!normalizedActivation) {
+        throw new Error(`步骤 ${visibleStep}：无法复用当前注册手机号，请重新执行步骤 ${visibleStep >= 11 ? 10 : 7}。`);
+      }
+
+      await setState({
+        signupPhoneActivation: normalizedActivation,
+        signupPhoneCompletedActivation: preferredActivation,
+        signupPhoneNumber: normalizedActivation.phoneNumber,
+        signupPhoneVerificationRequestedAt: null,
+        signupPhoneVerificationPurpose: 'login',
+        [PHONE_VERIFICATION_CODE_STATE_KEY]: '',
+        accountIdentifierType: 'phone',
+        accountIdentifier: normalizedActivation.phoneNumber,
+      });
+      return normalizedActivation;
+    }
+
+    async function cancelSignupPhoneActivation(state = {}, activation = null) {
+      const normalizedActivation = normalizeActivation(activation || state?.signupPhoneActivation);
+      if (normalizedActivation) {
+        await cancelPhoneActivation(state, normalizedActivation);
+      }
+      await setState({
+        signupPhoneActivation: null,
+        signupPhoneVerificationRequestedAt: null,
+        signupPhoneVerificationPurpose: '',
+      });
+    }
+
+    async function waitForSignupPhoneCode(state = {}, activation, options = {}) {
+      const waitSeconds = normalizePhoneCodeWaitSeconds(state?.phoneCodeWaitSeconds);
+      const timeoutWindows = normalizePhoneCodeTimeoutWindows(state?.phoneCodeTimeoutWindows);
+      const pollIntervalSeconds = normalizePhoneCodePollIntervalSeconds(state?.phoneCodePollIntervalSeconds);
+      const pollMaxRounds = normalizePhoneCodePollMaxRounds(state?.phoneCodePollMaxRounds);
+      const normalizedActivation = normalizeActivation(activation);
+      if (!normalizedActivation) {
+        await clearSignupPhoneRegistrationState(
+          '步骤 4：注册手机号激活记录缺失，已清理当前手机号状态；重新执行步骤 2 时将重新获取手机号。'
+        );
+        throw new Error('步骤 4：注册手机号激活记录缺失，请重新执行步骤 2。');
+      }
+
+      const providerLabel = normalizedActivation.provider === PHONE_SMS_PROVIDER_5SIM
+        ? '5sim'
+        : (normalizedActivation.provider === PHONE_SMS_PROVIDER_NEXSMS ? 'NexSMS' : 'HeroSMS');
+      let lastLoggedStatus = '';
+      let lastLoggedPollCount = 0;
+
+      for (let windowIndex = 1; windowIndex <= timeoutWindows; windowIndex += 1) {
+        await setState({
+          signupPhoneActivation: normalizedActivation,
+          signupPhoneNumber: normalizedActivation.phoneNumber,
+          signupPhoneVerificationPurpose: 'signup',
+          signupPhoneVerificationRequestedAt: Date.now(),
+        });
+        await addLog(
+          `步骤 4：正在等待 ${normalizedActivation.phoneNumber} 的短信验证码（${windowIndex}/${timeoutWindows}，最长 ${waitSeconds} 秒）。`,
+          'info'
+        );
+
+        try {
+          const code = await pollPhoneActivationCode(state, normalizedActivation, {
+            actionLabel: windowIndex === 1
+              ? `poll signup phone verification code from ${providerLabel}`
+              : `poll resent signup phone verification code from ${providerLabel}`,
+            timeoutMs: waitSeconds * 1000,
+            intervalMs: pollIntervalSeconds * 1000,
+            maxRounds: pollMaxRounds,
+            onStatus: async ({ elapsedMs, pollCount, statusText }) => {
+              const shouldLog = (
+                pollCount === 1
+                || statusText !== lastLoggedStatus
+                || pollCount - lastLoggedPollCount >= 3
+              );
+              if (!shouldLog) {
+                return;
+              }
+              lastLoggedStatus = statusText;
+              lastLoggedPollCount = pollCount;
+              await addLog(
+                `步骤 4：${providerLabel} 状态 ${normalizedActivation.phoneNumber}: ${statusText}（已等待 ${Math.ceil(elapsedMs / 1000)} 秒，第 ${pollCount}/${pollMaxRounds} 轮）。`,
+                'info'
+              );
+            },
+          });
+          await setState({
+            [PHONE_VERIFICATION_CODE_STATE_KEY]: String(code || '').trim(),
+            signupPhoneVerificationRequestedAt: Date.now(),
+          });
+          return code;
+        } catch (error) {
+          if (!isPhoneCodeTimeoutError(error)) {
+            throw error;
+          }
+
+          if (windowIndex < timeoutWindows) {
+            await addLog(
+              `步骤 4：${normalizedActivation.phoneNumber} 在 ${waitSeconds} 秒内未收到短信，准备请求重发。`,
+              'warn'
+            );
+            await requestAdditionalPhoneSms(state, normalizedActivation);
+            if (typeof options.onTimeoutWindow === 'function') {
+              await options.onTimeoutWindow({
+                activation: normalizedActivation,
+                windowIndex,
+                timeoutWindows,
+              });
+            }
+            continue;
+          }
+
+          throw error;
+        }
+      }
+
+      throw new Error('步骤 4：手机验证码未能成功获取。');
+    }
+
+    async function finalizeSignupPhoneActivationAfterSuccess(state = {}, activation = null) {
+      const normalizedActivation = normalizeActivation(activation || state?.signupPhoneActivation);
+      if (!normalizedActivation) {
+        await setState({
+          signupPhoneActivation: null,
+          signupPhoneVerificationRequestedAt: null,
+          signupPhoneVerificationPurpose: '',
+          [PHONE_VERIFICATION_CODE_STATE_KEY]: '',
+        });
+        return null;
+      }
+
+      await completePhoneActivation(state, normalizedActivation);
+      await setState({
+        signupPhoneActivation: null,
+        signupPhoneCompletedActivation: {
+          ...normalizedActivation,
+          successfulUses: Number(normalizedActivation.successfulUses || 0) + 1,
+        },
+        signupPhoneNumber: normalizedActivation.phoneNumber,
+        signupPhoneVerificationRequestedAt: null,
+        signupPhoneVerificationPurpose: '',
+        [PHONE_VERIFICATION_CODE_STATE_KEY]: '',
+        accountIdentifierType: 'phone',
+        accountIdentifier: normalizedActivation.phoneNumber,
+      });
+      return normalizedActivation;
+    }
+
+    async function finalizeLoginPhoneActivationAfterSuccess(state = {}, activation = null, options = {}) {
+      const normalizedActivation = normalizeActivation(activation || state?.signupPhoneActivation);
+      const visibleStep = Math.floor(Number(options?.visibleStep || options?.step) || 0) || 8;
+      if (!normalizedActivation) {
+        await setState({
+          signupPhoneActivation: null,
+          signupPhoneVerificationRequestedAt: null,
+          signupPhoneVerificationPurpose: '',
+          [PHONE_VERIFICATION_CODE_STATE_KEY]: '',
+        });
+        return null;
+      }
+
+      await completePhoneActivation(state, normalizedActivation);
+      await setState({
+        signupPhoneActivation: null,
+        signupPhoneCompletedActivation: {
+          ...normalizedActivation,
+          successfulUses: Number(normalizedActivation.successfulUses || 0) + 1,
+        },
+        signupPhoneNumber: normalizedActivation.phoneNumber,
+        signupPhoneVerificationRequestedAt: null,
+        signupPhoneVerificationPurpose: '',
+        [PHONE_VERIFICATION_CODE_STATE_KEY]: '',
+        accountIdentifierType: 'phone',
+        accountIdentifier: normalizedActivation.phoneNumber,
+      });
+      return normalizedActivation;
+    }
+
+    async function completeSignupPhoneVerificationFlow(tabId, options = {}) {
+      let state = options?.state || await getState();
+      const activation = normalizeActivation(options?.activation || state?.signupPhoneActivation);
+      if (!activation) {
+        await clearSignupPhoneRegistrationState(
+          '步骤 4：未找到当前注册手机号激活记录，已清理当前手机号状态；重新执行步骤 2 时将重新获取手机号。'
+        );
+        throw new Error('步骤 4：未找到当前注册手机号激活记录，请重新执行步骤 2。');
+      }
+
+      let shouldCancelActivation = true;
+      try {
+        for (let attempt = 1; attempt <= DEFAULT_PHONE_SUBMIT_ATTEMPTS; attempt += 1) {
+          throwIfStopped();
+          state = await getState();
+          const code = await waitForSignupPhoneCode(state, activation, {
+            onTimeoutWindow: async () => {
+              try {
+                await resendSignupPhoneVerificationCode(tabId);
+                await addLog('步骤 4：已点击注册手机验证码页面的“重新发送”。', 'info');
+              } catch (resendError) {
+                if (String(resendError?.message || '').toLowerCase().includes('stopped')) {
+                  throw resendError;
+                }
+                await addLog(`步骤 4：注册手机验证码页面重发失败，将继续轮询短信。${resendError.message}`, 'warn');
+              }
+            },
+          });
+
+          await setState({
+            signupPhoneVerificationRequestedAt: Date.now(),
+            signupPhoneVerificationPurpose: 'signup',
+            [PHONE_VERIFICATION_CODE_STATE_KEY]: String(code || '').trim(),
+          });
+          await addLog(`步骤 4：已获取手机验证码 ${code}。`, 'info');
+
+          const submitResult = await submitSignupPhoneVerificationCode(tabId, code, {
+            signupProfile: options.signupProfile || null,
+          });
+          if (submitResult?.invalidCode) {
+            const invalidErrorText = String(submitResult.errorText || submitResult.url || '未知错误').trim();
+            if (attempt >= DEFAULT_PHONE_SUBMIT_ATTEMPTS) {
+              throw new Error(`步骤 4：手机验证码连续 ${DEFAULT_PHONE_SUBMIT_ATTEMPTS} 次被拒绝：${invalidErrorText}`);
+            }
+
+            await requestAdditionalPhoneSms(state, activation);
+            try {
+              await resendSignupPhoneVerificationCode(tabId);
+            } catch (resendError) {
+              if (String(resendError?.message || '').toLowerCase().includes('stopped')) {
+                throw resendError;
+              }
+              await addLog(`步骤 4：验证码被拒后点击重发失败。${resendError.message}`, 'warn');
+            }
+            await addLog(
+              `步骤 4：手机验证码被拒绝，已请求新短信（${attempt + 1}/${DEFAULT_PHONE_SUBMIT_ATTEMPTS}）。`,
+              'warn'
+            );
+            continue;
+          }
+
+          await finalizeSignupPhoneActivationAfterSuccess(state, activation);
+          shouldCancelActivation = false;
+          await addLog('步骤 4：手机验证码已通过，继续进入资料填写。', 'ok');
+          return {
+            ...(submitResult || {}),
+            code,
+          };
+        }
+
+        throw new Error('步骤 4：手机验证码未能成功提交。');
+      } catch (error) {
+        if (shouldCancelActivation) {
+          await cancelSignupPhoneActivation(state, activation).catch(() => {});
+        }
+        await setState({
+          signupPhoneVerificationRequestedAt: null,
+          signupPhoneVerificationPurpose: '',
+          [PHONE_VERIFICATION_CODE_STATE_KEY]: '',
+        });
+        throw sanitizePhoneCodeTimeoutError(error);
+      }
+    }
+
+    async function submitLoginPhoneVerificationCode(tabId, code, options = {}) {
+      const visibleStep = Math.floor(Number(options?.visibleStep || options?.step) || 0) || 8;
+      const timeoutMs = typeof getOAuthFlowStepTimeoutMs === 'function'
+        ? await getOAuthFlowStepTimeoutMs(45000, { step: visibleStep, actionLabel: '提交登录手机验证码' })
+        : 45000;
+      const result = await sendToContentScriptResilient('signup-page', {
+        type: 'SUBMIT_PHONE_VERIFICATION_CODE',
+        step: visibleStep,
+        source: 'background',
+        payload: {
+          code,
+          purpose: 'login',
+          visibleStep,
+        },
+      }, {
+        timeoutMs,
+        responseTimeoutMs: timeoutMs,
+        retryDelayMs: 600,
+        logMessage: `步骤 ${visibleStep}：等待登录手机验证码页面就绪后填写短信验证码...`,
+      });
+
+      if (result?.error) {
+        throw new Error(result.error);
+      }
+      return result || {};
+    }
+
+    async function resendLoginPhoneVerificationCode(tabId, options = {}) {
+      const visibleStep = Math.floor(Number(options?.visibleStep || options?.step) || 0) || 8;
+      const timeoutMs = typeof getOAuthFlowStepTimeoutMs === 'function'
+        ? await getOAuthFlowStepTimeoutMs(65000, { step: visibleStep, actionLabel: '重新发送登录手机验证码' })
+        : 65000;
+      const result = await sendToContentScriptResilient('signup-page', {
+        type: 'RESEND_VERIFICATION_CODE',
+        step: visibleStep,
+        source: 'background',
+        payload: {},
+      }, {
+        timeoutMs,
+        responseTimeoutMs: timeoutMs,
+        retryDelayMs: 600,
+        logMessage: `步骤 ${visibleStep}：等待登录手机验证码重发按钮出现...`,
+      });
+
+      if (result?.error) {
+        throw new Error(result.error);
+      }
+      return result || {};
+    }
+
+    async function waitForLoginPhoneCode(state = {}, activation, options = {}) {
+      const visibleStep = Math.floor(Number(options?.visibleStep || options?.step) || 0) || 8;
+      const waitSeconds = normalizePhoneCodeWaitSeconds(state?.phoneCodeWaitSeconds);
+      const timeoutWindows = normalizePhoneCodeTimeoutWindows(state?.phoneCodeTimeoutWindows);
+      const pollIntervalSeconds = normalizePhoneCodePollIntervalSeconds(state?.phoneCodePollIntervalSeconds);
+      const pollMaxRounds = normalizePhoneCodePollMaxRounds(state?.phoneCodePollMaxRounds);
+      const normalizedActivation = normalizeActivation(activation);
+      if (!normalizedActivation) {
+        throw new Error(`步骤 ${visibleStep}：登录手机号激活记录缺失，请重新执行步骤 ${visibleStep >= 11 ? 10 : 7}。`);
+      }
+
+      for (let windowIndex = 1; windowIndex <= timeoutWindows; windowIndex += 1) {
+        await addLog(`步骤 ${visibleStep}：正在等待 ${normalizedActivation.phoneNumber} 的短信验证码（${windowIndex}/${timeoutWindows}，最长 ${waitSeconds} 秒）。`, 'info');
+        try {
+          const code = await pollPhoneActivationCode(state, normalizedActivation, {
+            actionLabel: windowIndex === 1
+              ? 'poll login phone verification code'
+              : 'poll resent login phone verification code',
+            timeoutMs: waitSeconds * 1000,
+            intervalMs: pollIntervalSeconds * 1000,
+            maxRounds: pollMaxRounds,
+          });
+          await setState({
+            [PHONE_VERIFICATION_CODE_STATE_KEY]: String(code || '').trim(),
+            signupPhoneVerificationRequestedAt: Date.now(),
+          });
+          return code;
+        } catch (error) {
+          if (!isPhoneCodeTimeoutError(error)) {
+            throw error;
+          }
+
+          if (windowIndex < timeoutWindows) {
+            await addLog(`步骤 ${visibleStep}：${normalizedActivation.phoneNumber} 在 ${waitSeconds} 秒内未收到短信，准备请求重发。`, 'warn');
+            await requestAdditionalPhoneSms(state, normalizedActivation);
+            if (typeof options.onTimeoutWindow === 'function') {
+              await options.onTimeoutWindow({
+                activation: normalizedActivation,
+                windowIndex,
+                timeoutWindows,
+              });
+            }
+            continue;
+          }
+
+          throw error;
+        }
+      }
+
+      throw new Error(`步骤 ${visibleStep}：手机验证码未能成功获取。`);
+    }
+
+    async function completeLoginPhoneVerificationFlow(tabId, options = {}) {
+      const visibleStep = Math.floor(Number(options?.visibleStep || options?.step) || 0) || 8;
+      let state = options?.state || await getState();
+      const baseActivation = normalizeActivation(
+        options?.activation
+        || state?.signupPhoneCompletedActivation
+        || state?.signupPhoneActivation
+      );
+      if (!baseActivation) {
+        throw new Error(`步骤 ${visibleStep}：未找到当前登录手机号激活记录，请重新执行步骤 ${visibleStep >= 11 ? 10 : 7}。`);
+      }
+
+      let activation = await prepareLoginPhoneActivation(state, {
+        activation: baseActivation,
+        visibleStep,
+      });
+      let shouldCancelActivation = true;
+
+      try {
+        for (let attempt = 1; attempt <= DEFAULT_PHONE_SUBMIT_ATTEMPTS; attempt += 1) {
+          throwIfStopped();
+          state = await getState();
+          const code = await waitForLoginPhoneCode(state, activation, {
+            visibleStep,
+            onTimeoutWindow: async () => {
+              try {
+                await resendLoginPhoneVerificationCode(tabId, { visibleStep });
+                await addLog(`步骤 ${visibleStep}：已点击登录手机验证码页面的“重新发送”。`, 'info');
+              } catch (resendError) {
+                if (String(resendError?.message || '').toLowerCase().includes('stopped')) {
+                  throw resendError;
+                }
+                await addLog(`步骤 ${visibleStep}：登录手机验证码页面重发失败，将继续轮询短信。${resendError.message}`, 'warn');
+              }
+            },
+          });
+
+          await setState({
+            [PHONE_VERIFICATION_CODE_STATE_KEY]: String(code || '').trim(),
+            signupPhoneVerificationRequestedAt: Date.now(),
+            signupPhoneVerificationPurpose: 'login',
+          });
+          await addLog(`步骤 ${visibleStep}：已获取登录手机验证码 ${code}。`, 'info');
+
+          const submitResult = await submitLoginPhoneVerificationCode(tabId, code, { visibleStep });
+          if (submitResult.invalidCode) {
+            const invalidErrorText = String(submitResult.errorText || submitResult.url || '未知错误').trim();
+            if (attempt >= DEFAULT_PHONE_SUBMIT_ATTEMPTS) {
+              throw new Error(`步骤 ${visibleStep}：登录手机验证码连续 ${DEFAULT_PHONE_SUBMIT_ATTEMPTS} 次被拒绝：${invalidErrorText}`);
+            }
+
+            await requestAdditionalPhoneSms(state, activation);
+            try {
+              await resendLoginPhoneVerificationCode(tabId, { visibleStep });
+            } catch (resendError) {
+              if (String(resendError?.message || '').toLowerCase().includes('stopped')) {
+                throw resendError;
+              }
+              await addLog(`步骤 ${visibleStep}：登录手机验证码被拒后点击重发失败。${resendError.message}`, 'warn');
+            }
+            await addLog(`步骤 ${visibleStep}：登录手机验证码被拒绝，已请求新短信（${attempt + 1}/${DEFAULT_PHONE_SUBMIT_ATTEMPTS}）。`, 'warn');
+            continue;
+          }
+
+          await finalizeLoginPhoneActivationAfterSuccess(state, activation, { visibleStep });
+          shouldCancelActivation = false;
+          await addLog(`步骤 ${visibleStep}：登录手机验证码已通过，继续进入后续授权流程。`, 'ok');
+          return {
+            ...(submitResult || {}),
+            code,
+          };
+        }
+
+        throw new Error(`步骤 ${visibleStep}：登录手机验证码未能成功提交。`);
+      } catch (error) {
+        if (shouldCancelActivation && activation) {
+          await cancelPhoneActivation(state, activation).catch(() => {});
+        }
+        await setState({
+          signupPhoneActivation: null,
+          [PHONE_VERIFICATION_CODE_STATE_KEY]: '',
+          signupPhoneVerificationRequestedAt: null,
+          signupPhoneVerificationPurpose: '',
+        });
+        throw sanitizePhoneCodeTimeoutError(error);
+      }
     }
 
     async function acquirePhoneActivation(state = {}, options = {}) {
@@ -3032,11 +3591,20 @@
     }
 
     return {
+      cancelSignupPhoneActivation,
+      completeLoginPhoneVerificationFlow,
+      completeSignupPhoneVerificationFlow,
       completePhoneVerificationFlow,
+      finalizeSignupPhoneActivationAfterSuccess,
+      finalizeLoginPhoneActivationAfterSuccess,
       normalizeActivation,
       pollPhoneActivationCode,
+      prepareLoginPhoneActivation,
+      prepareSignupPhoneActivation,
       reactivatePhoneActivation,
       requestPhoneActivation,
+      waitForSignupPhoneCode,
+      waitForLoginPhoneCode,
     };
   }
 

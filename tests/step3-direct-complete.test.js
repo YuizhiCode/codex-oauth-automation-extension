@@ -160,3 +160,21 @@ return {
   const afterSubmit = api.snapshot();
   assert.deepStrictEqual(afterSubmit.clicks, ['Continue']);
 });
+
+test('signup password page detection accepts log-in password URL', () => {
+  const api = new Function(`
+const location = {
+  pathname: '/log-in/password',
+};
+
+${extractFunction('isSignupPasswordPage')}
+
+return {
+  run() {
+    return isSignupPasswordPage();
+  },
+};
+`)();
+
+  assert.equal(api.run(), true);
+});

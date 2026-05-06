@@ -673,12 +673,39 @@
           const currentState = await getState();
           const updates = buildPersistentSettingsPayload(message.payload || {});
           const sessionUpdates = buildLuckmailSessionSettingsPayload(message.payload || {});
+          const nextSignupState = {
+            ...currentState,
+            ...updates,
+            resolvedSignupMethod: null,
+          };
+          if (
+            Object.prototype.hasOwnProperty.call(updates, 'phoneVerificationEnabled')
+            || Object.prototype.hasOwnProperty.call(updates, 'plusModeEnabled')
+            || Object.prototype.hasOwnProperty.call(updates, 'signupMethod')
+          ) {
+            const canUsePhoneSignup = (state = {}) => Boolean(state?.phoneVerificationEnabled)
+              && !Boolean(state?.plusModeEnabled)
+              && !Boolean(state?.contributionMode);
+            const normalizeSignupMethod = (value = '') => (
+              String(value || '').trim().toLowerCase() === 'phone' ? 'phone' : 'email'
+            );
+            const resolveSignupMethod = (state = {}) => {
+              const frozenMethod = String(state?.resolvedSignupMethod || '').trim().toLowerCase();
+              if (frozenMethod === 'email' || frozenMethod === 'phone') {
+                return normalizeSignupMethod(frozenMethod);
+              }
+              const method = normalizeSignupMethod(state?.signupMethod);
+              return method === 'phone' && canUsePhoneSignup(state) ? 'phone' : 'email';
+            };
+            updates.signupMethod = resolveSignupMethod(nextSignupState);
+          }
           const modeChanged = Object.prototype.hasOwnProperty.call(updates, 'plusModeEnabled')
             && Boolean(currentState?.plusModeEnabled) !== Boolean(updates.plusModeEnabled);
           await setPersistentSettings(updates);
           const stateUpdates = {
             ...updates,
             ...sessionUpdates,
+            resolvedSignupMethod: null,
           };
           if (modeChanged && typeof getStepIdsForState === 'function') {
             const nextStateForSteps = { ...currentState, ...stateUpdates };

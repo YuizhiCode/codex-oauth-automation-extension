@@ -1,6 +1,9 @@
 (function attachStepDefinitions(root, factory) {
   root.MultiPageStepDefinitions = factory();
 })(typeof self !== 'undefined' ? self : globalThis, function createStepDefinitionsModule() {
+  const SIGNUP_METHOD_EMAIL = 'email';
+  const SIGNUP_METHOD_PHONE = 'phone';
+
   const NORMAL_STEP_DEFINITIONS = [
     { id: 1, order: 10, key: 'open-chatgpt', title: '打开 ChatGPT 官网' },
     { id: 2, order: 20, key: 'submit-signup-email', title: '注册并输入邮箱' },
@@ -34,12 +37,27 @@
     { id: 13, order: 130, key: 'platform-verify', title: '平台回调验证' },
   ];
 
+  const PHONE_SIGNUP_TITLE_OVERRIDES = Object.freeze({
+    'submit-signup-email': '注册并输入手机号',
+    'fetch-signup-code': '获取手机验证码',
+  });
+
   function isPlusModeEnabled(options = {}) {
     return Boolean(options?.plusModeEnabled || options?.plusMode);
   }
 
   function isGptOnlyModeEnabled(options = {}) {
     return Boolean(options?.gptOnlyModeEnabled || options?.gptOnlyMode);
+  }
+
+  function normalizeSignupMethod(value = '') {
+    return String(value || '').trim().toLowerCase() === SIGNUP_METHOD_PHONE
+      ? SIGNUP_METHOD_PHONE
+      : SIGNUP_METHOD_EMAIL;
+  }
+
+  function getResolvedSignupMethod(options = {}) {
+    return normalizeSignupMethod(options?.resolvedSignupMethod || options?.signupMethod);
   }
 
   function getModeStepDefinitions(options = {}) {
@@ -53,11 +71,24 @@
   }
 
   function cloneSteps(steps = []) {
-    return steps.map((step) => ({ ...step }));
+    return steps.map((step) => ({
+      ...step,
+    }));
+  }
+
+  function getResolvedStepTitle(step = {}, options = {}) {
+    const signupMethod = getResolvedSignupMethod(options);
+    if (signupMethod === SIGNUP_METHOD_PHONE && PHONE_SIGNUP_TITLE_OVERRIDES[step.key]) {
+      return PHONE_SIGNUP_TITLE_OVERRIDES[step.key];
+    }
+    return step.title;
   }
 
   function getSteps(options = {}) {
-    return cloneSteps(getModeStepDefinitions(options));
+    return cloneSteps(getModeStepDefinitions(options)).map((step) => ({
+      ...step,
+      title: getResolvedStepTitle(step, options),
+    }));
   }
 
   function getAllSteps() {
@@ -88,10 +119,17 @@
   function getStepById(id, options = {}) {
     const numericId = Number(id);
     const match = getModeStepDefinitions(options).find((step) => step.id === numericId);
-    return match ? { ...match } : null;
+    return match
+      ? {
+        ...match,
+        title: getResolvedStepTitle(match, options),
+      }
+      : null;
   }
 
   return {
+    SIGNUP_METHOD_EMAIL,
+    SIGNUP_METHOD_PHONE,
     STEP_DEFINITIONS: NORMAL_STEP_DEFINITIONS,
     GPT_ONLY_STEP_DEFINITIONS,
     NORMAL_STEP_DEFINITIONS,
@@ -103,5 +141,6 @@
     getSteps,
     isGptOnlyModeEnabled,
     isPlusModeEnabled,
+    normalizeSignupMethod,
   };
 });

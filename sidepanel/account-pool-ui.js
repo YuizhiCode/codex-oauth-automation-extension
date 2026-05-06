@@ -27,7 +27,7 @@
         focusField = false,
       } = controlOptions;
 
-      visible = Boolean(nextVisible);
+      visible = Boolean(nextVisible); landId
       if (clearForm && typeof onClear === 'function') {
         onClear();
       }

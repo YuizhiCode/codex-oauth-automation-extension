@@ -221,6 +221,8 @@ const IP_PROXY_ENABLED_SERVICE_VALUES = ['711proxy'];
 const DEFAULT_IP_PROXY_MODE = 'account';
 const IP_PROXY_MODE_VALUES = ['api', 'account'];
 const DEFAULT_IP_PROXY_PROTOCOL = 'http';
+const SIGNUP_METHOD_EMAIL = 'email';
+const SIGNUP_METHOD_PHONE = 'phone';
 const IP_PROXY_PROTOCOL_VALUES = ['http', 'https', 'socks4', 'socks5'];
 const IP_PROXY_FETCH_TIMEOUT_MS = 20000;
 const IP_PROXY_SETTINGS_SCOPE = 'regular';
@@ -488,6 +490,7 @@ const PERSISTED_SETTING_DEFAULTS = {
   codex2apiUrl: DEFAULT_CODEX2API_URL,
   codex2apiAdminKey: '',
   customPassword: '',
+  signupMethod: SIGNUP_METHOD_EMAIL,
   plusModeEnabled: false,
   gptOnlyModeEnabled: false,
   paypalEmail: '',
@@ -645,12 +648,18 @@ const DEFAULT_STATE = {
   currentPhoneActivation: null,
   currentPhoneVerificationCode: '',
   reusablePhoneActivation: null,
+  signupPhoneNumber: '',
+  signupPhoneActivation: null,
+  signupPhoneCompletedActivation: null,
+  signupPhoneVerificationRequestedAt: null,
+  signupPhoneVerificationPurpose: '',
   heroSmsLastPriceTiers: [],
   heroSmsLastPriceCountryId: 0,
   heroSmsLastPriceCountryLabel: '',
   heroSmsLastPriceUserLimit: '',
   heroSmsLastPriceAt: 0,
   pendingPhoneActivationConfirmation: null,
+  resolvedSignupMethod: null,
   autoRunning: false, // 当前是否处于自动运行中。
   autoRunPhase: 'idle', // 当前自动运行阶段。
   autoRunCurrentRun: 0, // 自动运行当前执行到第几轮。
@@ -1432,6 +1441,49 @@ function normalizePhoneSmsProviderOrder(value = [], fallbackOrder = []) {
   return fallbackNormalized.slice(0, 3);
 }
 
+function normalizeSignupMethod(value = '') {
+  return String(value || '').trim().toLowerCase() === SIGNUP_METHOD_PHONE
+    ? SIGNUP_METHOD_PHONE
+    : SIGNUP_METHOD_EMAIL;
+}
+
+function canUsePhoneSignup(state = {}) {
+  return Boolean(state?.phoneVerificationEnabled)
+    && !Boolean(state?.plusModeEnabled)
+    && !Boolean(state?.contributionMode);
+}
+
+function resolveSignupMethod(state = {}) {
+  const frozenMethod = String(state?.resolvedSignupMethod || '').trim().toLowerCase();
+  if (frozenMethod === SIGNUP_METHOD_EMAIL || frozenMethod === SIGNUP_METHOD_PHONE) {
+    return normalizeSignupMethod(frozenMethod);
+  }
+  const method = normalizeSignupMethod(state?.signupMethod);
+  return method === SIGNUP_METHOD_PHONE && canUsePhoneSignup(state)
+    ? SIGNUP_METHOD_PHONE
+    : SIGNUP_METHOD_EMAIL;
+}
+
+async function ensureResolvedSignupMethodForRun(options = {}) {
+  const state = await getState();
+  const force = Boolean(options.force);
+  const existing = String(state?.resolvedSignupMethod || '').trim().toLowerCase();
+  if (!force && (existing === SIGNUP_METHOD_EMAIL || existing === SIGNUP_METHOD_PHONE)) {
+    return normalizeSignupMethod(existing);
+  }
+
+  const configuredMethod = normalizeSignupMethod(state?.signupMethod);
+  const resolvedMethod = resolveSignupMethod({
+    ...state,
+    resolvedSignupMethod: null,
+  });
+  await setState({ resolvedSignupMethod: resolvedMethod });
+  if (configuredMethod === SIGNUP_METHOD_PHONE && resolvedMethod !== SIGNUP_METHOD_PHONE) {
+    await addLog('当前模式暂不支持手机号注册，本轮已固定为邮箱注册。', 'warn');
+  }
+  return resolvedMethod;
+}
+
 function normalizeFiveSimBaseUrl(value = '', fallback = DEFAULT_FIVE_SIM_BASE_URL) {
   const trimmed = String(value || '').trim();
   if (!trimmed) {
@@ -1648,6 +1700,8 @@ function normalizePersistentSettingValue(key, value) {
       return String(value || '').trim();
     case 'customPassword':
       return String(value || '');
+    case 'signupMethod':
+      return normalizeSignupMethod(value);
     case 'paypalEmail':
       return String(value || '').trim();
     case 'paypalPassword':
@@ -2197,6 +2251,18 @@ function normalizeRegisteredAccountPool(accounts = []) {
 
 async function saveRegisteredAccountAfterProfileSuccess(stateOverride = null) {
   const state = stateOverride || await getState();
+  const signupMethod = typeof resolveSignupMethod === 'function'
+    ? resolveSignupMethod(state)
+    : String(state?.resolvedSignupMethod || state?.signupMethod || '').trim().toLowerCase();
+  if (
+    signupMethod === 'phone'
+    || String(state?.accountIdentifierType || '').trim().toLowerCase() === 'phone'
+    || Boolean(String(state?.signupPhoneNumber || '').trim())
+  ) {
+    await addLog('步骤 5：手机号注册不进入待复用账号池，已跳过写入。', 'info');
+    return null;
+  }
+
   const email = String(state?.email || '').trim();
   const password = String(state?.password || state?.customPassword || '').trim();
   if (!email) {
@@ -6147,7 +6213,7 @@ function isSignupPasswordPageUrl(rawUrl) {
   const parsed = parseUrlSafely(rawUrl);
   if (!parsed) return false;
   return isSignupPageHost(parsed.hostname)
-    && /\/create-account\/password(?:[/?#]|$)/i.test(parsed.pathname || '');
+    && /\/(?:create-account|log-in)\/password(?:[/?#]|$)/i.test(parsed.pathname || '');
 }
 
 function isSignupEmailVerificationPageUrl(rawUrl) {
@@ -6157,7 +6223,21 @@ function isSignupEmailVerificationPageUrl(rawUrl) {
   const parsed = parseUrlSafely(rawUrl);
   if (!parsed) return false;
   return isSignupPageHost(parsed.hostname)
-    && /\/email-verification(?:[/?#]|$)/i.test(parsed.pathname || '');
+    && /\/(?:email|contact)-verification(?:[/?#]|$)/i.test(parsed.pathname || '');
+}
+
+function isSignupPhoneVerificationPageUrl(rawUrl) {
+  const parsed = parseUrlSafely(rawUrl);
+  if (!parsed) return false;
+  return isSignupPageHost(parsed.hostname)
+    && /\/phone-verification(?:[/?#]|$)/i.test(parsed.pathname || '');
+}
+
+function isSignupProfilePageUrl(rawUrl) {
+  const parsed = parseUrlSafely(rawUrl);
+  if (!parsed) return false;
+  return isSignupPageHost(parsed.hostname)
+    && /\/create-account\/profile(?:[/?#]|$)/i.test(parsed.pathname || '');
 }
 
 function is163MailHost(hostname = '') {
@@ -8740,6 +8820,12 @@ function shouldStopEmailAutoFetchRetries(generator, error) {
 
 async function ensureAutoEmailReady(targetRun, totalRuns, attemptRuns) {
   const currentState = await getState();
+  const resolvedSignupMethod = await ensureResolvedSignupMethodForRun();
+  if (resolvedSignupMethod === SIGNUP_METHOD_PHONE) {
+    await addLog(`=== 目标 ${targetRun}/${totalRuns} 轮：本轮注册方式为手机号注册，将跳过邮箱预获取 ===`, 'info');
+    return null;
+  }
+
   if (isHotmailProvider(currentState)) {
     const account = await ensureHotmailAccountForFlow({
       allowAllocate: true,
@@ -8871,6 +8957,12 @@ async function ensureAutoEmailReady(targetRun, totalRuns, attemptRuns) {
 
 async function ensureAutoEmailReady(targetRun, totalRuns, attemptRuns) {
   const currentState = await getState();
+  const resolvedSignupMethod = await ensureResolvedSignupMethodForRun();
+  if (resolvedSignupMethod === SIGNUP_METHOD_PHONE) {
+    await addLog(`=== 目标 ${targetRun}/${totalRuns} 轮：本轮注册方式为手机号注册，将跳过邮箱预获取 ===`, 'info');
+    return null;
+  }
+
   if (isHotmailProvider(currentState)) {
     const account = await ensureHotmailAccountForFlow({
       allowAllocate: true,
@@ -9300,6 +9392,7 @@ const signupFlowHelpers = self.MultiPageSignupFlowHelpers?.createSignupFlowHelpe
   ensureHotmailAccountForFlow,
   ensureMail2925AccountForFlow,
   ensureLuckmailPurchaseForFlow,
+  fetchGeneratedEmail,
   getTabId,
   isGeneratedAliasProvider,
   isReusableGeneratedAliasEmail,
@@ -9308,12 +9401,16 @@ const signupFlowHelpers = self.MultiPageSignupFlowHelpers?.createSignupFlowHelpe
   isHotmailProvider,
   isLuckmailProvider,
   isSignupPasswordPageUrl,
+  isSignupPhoneVerificationPageUrl,
+  isSignupProfilePageUrl,
   isTabAlive,
   reuseOrCreateTab,
   sendToContentScriptResilient,
   setEmailState,
+  setState,
   SIGNUP_ENTRY_URL,
   SIGNUP_PAGE_INJECT_FILES,
+  waitForTabStableComplete,
   waitForTabUrlMatch,
 });
 const verificationFlowHelpers = self.MultiPageBackgroundVerificationFlow?.createVerificationFlowHelpers({
@@ -9372,6 +9469,7 @@ const phoneVerificationHelpers = self.MultiPageBackgroundPhoneVerification?.crea
   HERO_SMS_COUNTRY_LABEL,
   HERO_SMS_SERVICE_CODE,
   HERO_SMS_SERVICE_LABEL,
+  sendToContentScript,
   sendToContentScriptResilient,
   setState,
   sleepWithStop,
@@ -9390,8 +9488,11 @@ const step2Executor = self.MultiPageBackgroundStep2?.createStep2Executor({
   ensureSignupAuthEntryPageReady,
   ensureSignupEntryPageReady,
   ensureSignupPostEmailPageReadyInTab,
+  ensureSignupPostIdentityPageReadyInTab: signupFlowHelpers.ensureSignupPostIdentityPageReadyInTab,
   getTabId,
   isTabAlive,
+  phoneVerificationHelpers,
+  resolveSignupMethod,
   resolveSignupEmailForFlow,
   sendToContentScriptResilient,
   SIGNUP_PAGE_INJECT_FILES,
@@ -9424,6 +9525,8 @@ const step4Executor = self.MultiPageBackgroundStep4?.createStep4Executor({
   chrome,
   completeStepFromBackground,
   confirmCustomVerificationStepBypass: verificationFlowHelpers.confirmCustomVerificationStepBypass,
+  generateRandomBirthday,
+  generateRandomName,
   ensureMail2925MailboxSession,
   ensureIcloudMailSession: ensureIcloudMailSessionForVerification,
   getMailConfig,
@@ -9432,12 +9535,17 @@ const step4Executor = self.MultiPageBackgroundStep4?.createStep4Executor({
   isTabAlive,
   LUCKMAIL_PROVIDER,
   CLOUDFLARE_TEMP_EMAIL_PROVIDER,
+  phoneVerificationHelpers,
+  resolveSignupMethod,
   resolveVerificationStep: verificationFlowHelpers.resolveVerificationStep,
   reuseOrCreateTab,
+  sendToContentScript,
   sendToContentScriptResilient,
+  isRetryableContentScriptTransportError,
   shouldUseCustomRegistrationEmail,
   STANDARD_MAIL_VERIFICATION_RESEND_INTERVAL_MS,
   throwIfStopped,
+  waitForTabStableComplete,
 });
 const step5Executor = self.MultiPageBackgroundStep5?.createStep5Executor({
   addLog,
@@ -9460,6 +9568,7 @@ const step7Executor = self.MultiPageBackgroundStep7?.createStep7Executor({
   isStep6RecoverableResult,
   isStep6SuccessResult,
   refreshOAuthUrlBeforeStep6,
+  resolveSignupEmailForFlow,
   reuseOrCreateTab,
   sendToContentScriptResilient,
   startOAuthFlowTimeoutWindow,
@@ -9485,9 +9594,12 @@ const step8Executor = self.MultiPageBackgroundStep8?.createStep8Executor({
   isTabAlive,
   isVerificationMailPollingError,
   LUCKMAIL_PROVIDER,
+  phoneVerificationHelpers,
+  resolveSignupEmailForFlow,
   resolveVerificationStep: verificationFlowHelpers.resolveVerificationStep,
   rerunStep7ForStep8Recovery: (...args) => rerunStep7ForStep8Recovery(...args),
   reuseOrCreateTab,
+  sendToContentScriptResilient,
   setState,
   shouldUseCustomRegistrationEmail,
   sleepWithStop,
@@ -9613,6 +9725,19 @@ const messageRouter = self.MultiPageBackgroundMessageRouter?.createMessageRouter
   finalizePhoneActivationAfterSuccessfulFlow,
   finalizeStep3Completion: async () => {
     const currentState = await getState();
+    const signupMethod = typeof resolveSignupMethod === 'function'
+      ? resolveSignupMethod(currentState)
+      : String(currentState?.resolvedSignupMethod || currentState?.signupMethod || '').trim().toLowerCase();
+    const accountIdentifierType = String(currentState?.accountIdentifierType || '').trim().toLowerCase();
+    const hasPhoneSignupIdentity = signupMethod === SIGNUP_METHOD_PHONE
+      || accountIdentifierType === 'phone'
+      || Boolean(String(currentState?.signupPhoneNumber || '').trim())
+      || Boolean(currentState?.signupPhoneActivation)
+      || Boolean(currentState?.signupPhoneCompletedActivation);
+    if (hasPhoneSignupIdentity) {
+      return { ready: true, phoneSignup: true, deferredToStep4: true };
+    }
+
     const signupTabId = await getTabId('signup-page');
     return signupFlowHelpers.finalizeSignupPasswordSubmitInTab(
       signupTabId,
@@ -10345,12 +10470,19 @@ async function getLoginAuthStateFromContent(options = {}) {
 async function ensureStep8VerificationPageReady(options = {}) {
   const visibleStep = Number(options.visibleStep) || 8;
   const authLoginStep = Number(options.authLoginStep) || (visibleStep >= 11 ? 10 : 7);
+  const allowPhoneVerificationPage = Boolean(options.allowPhoneVerificationPage);
+  const allowAddEmailPage = Boolean(options.allowAddEmailPage);
   const inspectState = async (overrides = {}) => getLoginAuthStateFromContent({
     ...options,
     ...overrides,
   });
   let pageState = await inspectState();
-  if (pageState.state === 'verification_page' || pageState.state === 'oauth_consent_page') {
+  if (
+    pageState.state === 'verification_page'
+    || pageState.state === 'oauth_consent_page'
+    || (allowPhoneVerificationPage && pageState.state === 'phone_verification_page')
+    || (allowAddEmailPage && pageState.state === 'add_email_page')
+  ) {
     return pageState;
   }
 
@@ -10415,13 +10547,18 @@ async function ensureStep8VerificationPageReady(options = {}) {
         retryDelayMs: 500,
         logMessage: `步骤 ${visibleStep}：认证页恢复后，正在确认验证码页是否可继续...`,
       });
-      if (pageState.state === 'verification_page' || pageState.state === 'oauth_consent_page') {
+      if (
+        pageState.state === 'verification_page'
+        || pageState.state === 'oauth_consent_page'
+        || (allowPhoneVerificationPage && pageState.state === 'phone_verification_page')
+        || (allowAddEmailPage && pageState.state === 'add_email_page')
+      ) {
         return pageState;
       }
       if (pageState.maxCheckAttemptsBlocked) {
         throw new Error(`${CLOUDFLARE_SECURITY_BLOCK_ERROR_PREFIX}${CLOUDFLARE_SECURITY_BLOCK_USER_MESSAGE}`);
       }
-      if (pageState.state === 'add_phone_page' || pageState.state === 'phone_verification_page') {
+      if (pageState.state === 'add_phone_page' || (!allowPhoneVerificationPage && pageState.state === 'phone_verification_page')) {
         const urlPart = pageState.url ? ` URL: ${pageState.url}` : '';
         throw new Error(`步骤 ${visibleStep}：当前认证页进入手机号页面，当前流程无法继续自动授权。${urlPart}`.trim());
       }
@@ -10431,7 +10568,7 @@ async function ensureStep8VerificationPageReady(options = {}) {
     throw new Error(`STEP8_RESTART_STEP7::步骤 ${visibleStep}：当前认证页进入登录超时报错页，请回到步骤 ${authLoginStep} 重新开始。${urlPart}`.trim());
   }
 
-  if (pageState.state === 'add_phone_page' || pageState.state === 'phone_verification_page') {
+  if (pageState.state === 'add_phone_page' || (!allowPhoneVerificationPage && pageState.state === 'phone_verification_page')) {
     const urlPart = pageState.url ? ` URL: ${pageState.url}` : '';
     throw new Error(`步骤 ${visibleStep}：当前认证页进入手机号页面，当前流程无法继续自动授权。${urlPart}`.trim());
   }

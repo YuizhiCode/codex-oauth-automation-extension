@@ -446,7 +446,7 @@
       <div class="section-mini-header">
         <div class="section-mini-copy">
           <span class="section-label">接码设置</span>
-          <span class="data-value">手机号验证与 HeroSMS 获取策略</span>
+          <span class="data-value">手机号验证与接码服务商获取策略</span>
         </div>
         <div id="row-phone-verification-enabled" class="section-mini-actions phone-verification-header-actions">
           <button id="btn-toggle-phone-verification-section" class="btn btn-ghost btn-xs" type="button"
@@ -462,6 +462,13 @@
       <div class="data-row phone-verification-fold-row" id="row-phone-verification-fold" style="display:none;">
         <div id="phone-verification-fold" class="phone-verification-fold">
           <div class="phone-verification-fold-body">
+            <div class="data-row" id="row-signup-method" style="display:none;">
+              <span class="data-label">注册方式</span>
+              <div id="signup-method-group" class="choice-group" role="group" aria-label="注册方式">
+                <button type="button" class="choice-btn" data-signup-method="email">邮箱注册</button>
+                <button type="button" class="choice-btn" data-signup-method="phone">手机号注册</button>
+              </div>
+            </div>
             <div class="data-row" id="row-account-run-history-helper-base-url" style="display:none;">
               <span class="data-label">同步服务</span>
               <input type="text" id="input-account-run-history-helper-base-url" class="data-input mono"
@@ -702,6 +709,10 @@
                   <span id="display-hero-sms-current-code" class="data-value mono hero-sms-runtime-value">未获取</span>
                 </div>
               </div>
+            </div>
+            <div class="data-row" id="row-signup-phone" style="display:none;">
+              <span class="data-label">注册手机号</span>
+              <input type="text" id="input-signup-phone" class="data-input mono signup-phone-runtime-input" placeholder="完整国际号码，如 +44..." />
             </div>
           </div>
         </div>

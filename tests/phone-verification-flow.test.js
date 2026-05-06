@@ -32,6 +32,72 @@ function buildHeroSmsStatusV2Payload({ smsCode = '', smsText = '', callCode = ''
   });
 }
 
+test('phone verification helper exports signup-phone flow helpers', () => {
+  const helpers = api.createPhoneVerificationHelpers({
+    addLog: async () => {},
+    ensureStep8SignupPageReady: async () => {},
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({}),
+      text: async () => '{}',
+    }),
+    getState: async () => ({}),
+    sendToContentScriptResilient: async () => ({}),
+    setState: async () => {},
+    sleepWithStop: async () => {},
+    throwIfStopped: () => {},
+  });
+
+  assert.equal(typeof helpers.prepareSignupPhoneActivation, 'function');
+  assert.equal(typeof helpers.completeSignupPhoneVerificationFlow, 'function');
+  assert.equal(typeof helpers.cancelSignupPhoneActivation, 'function');
+});
+
+test('signup phone helper clears stale phone state when activation record is missing', async () => {
+  const logs = [];
+  let currentState = {
+    signupPhoneNumber: '66959916439',
+    signupPhoneActivation: null,
+    signupPhoneVerificationRequestedAt: 123,
+    signupPhoneVerificationPurpose: 'signup',
+    currentPhoneVerificationCode: '111111',
+    accountIdentifierType: 'phone',
+    accountIdentifier: '66959916439',
+  };
+
+  const helpers = api.createPhoneVerificationHelpers({
+    addLog: async (message, level = 'info') => {
+      logs.push({ message, level });
+    },
+    ensureStep8SignupPageReady: async () => {},
+    fetchImpl: async () => {
+      throw new Error('network should not be used without an activation');
+    },
+    getState: async () => currentState,
+    sendToContentScriptResilient: async () => {
+      throw new Error('content script should not be used without an activation');
+    },
+    setState: async (updates) => {
+      currentState = { ...currentState, ...updates };
+    },
+    sleepWithStop: async () => {},
+    throwIfStopped: () => {},
+  });
+
+  await assert.rejects(
+    () => helpers.completeSignupPhoneVerificationFlow(77, { state: currentState }),
+    /未找到当前注册手机号激活记录/
+  );
+
+  assert.equal(currentState.signupPhoneNumber, '');
+  assert.equal(currentState.signupPhoneActivation, null);
+  assert.equal(currentState.signupPhoneVerificationRequestedAt, null);
+  assert.equal(currentState.signupPhoneVerificationPurpose, '');
+  assert.equal(currentState.currentPhoneVerificationCode, '');
+  assert.equal(currentState.accountIdentifier, '');
+  assert.equal(logs.some((entry) => /重新执行步骤 2 时将重新获取手机号/.test(entry.message)), true);
+});
+
 test('phone verification helper requests a 5sim number with configured country/operator/product', async () => {
   const requests = [];
   const helpers = api.createPhoneVerificationHelpers({
@@ -153,6 +219,122 @@ test('phone verification helper polls NexSMS messages until it extracts the sms 
   assert.equal(requests[0].url.searchParams.get('phoneNumber'), '66881122334');
   assert.equal(requests[0].url.searchParams.get('format'), 'json_latest');
   assert.equal(requests[0].options.headers.Authorization, 'Bearer nex-key');
+});
+
+test('signup phone helper uses timeout windows, page resend, and step 4 submit payload', async () => {
+  const contentMessages = [];
+  const statusActions = [];
+  const logs = [];
+  let getStatusCount = 0;
+  let currentState = {
+    heroSmsApiKey: 'demo-key',
+    phoneCodeWaitSeconds: 15,
+    phoneCodeTimeoutWindows: 2,
+    phoneCodePollIntervalSeconds: 1,
+    phoneCodePollMaxRounds: 1,
+    signupPhoneNumber: '66959916439',
+    signupPhoneVerificationPurpose: 'signup',
+    signupPhoneActivation: {
+      activationId: 'signup-123',
+      phoneNumber: '66959916439',
+      provider: 'hero-sms',
+      serviceCode: 'dr',
+      countryId: 52,
+      successfulUses: 0,
+      maxUses: 3,
+    },
+  };
+
+  const helpers = api.createPhoneVerificationHelpers({
+    addLog: async (message, level = 'info') => {
+      logs.push({ message, level });
+    },
+    ensureStep8SignupPageReady: async () => {},
+    fetchImpl: async (url) => {
+      const parsedUrl = new URL(url);
+      const action = parsedUrl.searchParams.get('action');
+      if (action === 'getStatus') {
+        getStatusCount += 1;
+        return {
+          ok: true,
+          text: async () => (getStatusCount === 1 ? 'STATUS_WAIT_CODE' : 'STATUS_OK:123456'),
+        };
+      }
+      if (action === 'setStatus') {
+        statusActions.push(parsedUrl.searchParams.get('status'));
+        return {
+          ok: true,
+          text: async () => 'ACCESS_READY',
+        };
+      }
+      throw new Error(`Unexpected HeroSMS action: ${action}`);
+    },
+    getOAuthFlowStepTimeoutMs: async (fallback) => fallback,
+    getState: async () => currentState,
+    sendToContentScriptResilient: async (_source, message) => {
+      contentMessages.push(message);
+      if (message.type === 'RESEND_VERIFICATION_CODE') {
+        return { resent: true };
+      }
+      if (message.type === 'SUBMIT_PHONE_VERIFICATION_CODE') {
+        return { success: true };
+      }
+      throw new Error(`Unexpected content-script message: ${message.type}`);
+    },
+    setState: async (updates) => {
+      currentState = { ...currentState, ...updates };
+    },
+    sleepWithStop: async () => {},
+    throwIfStopped: () => {},
+  });
+
+  const result = await helpers.completeSignupPhoneVerificationFlow(77, {
+    state: currentState,
+    signupProfile: {
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      year: 1995,
+      month: 1,
+      day: 2,
+    },
+  });
+
+  assert.deepStrictEqual(result, { success: true, code: '123456' });
+  assert.equal(getStatusCount, 2);
+  assert.deepStrictEqual(statusActions, ['3', '6']);
+  assert.deepStrictEqual(contentMessages.map((message) => ({
+    type: message.type,
+    step: message.step,
+    code: message.payload?.code,
+    purpose: message.payload?.purpose,
+    signupProfile: message.payload?.signupProfile || null,
+  })), [
+    {
+      type: 'RESEND_VERIFICATION_CODE',
+      step: 4,
+      code: undefined,
+      purpose: undefined,
+      signupProfile: null,
+    },
+    {
+      type: 'SUBMIT_PHONE_VERIFICATION_CODE',
+      step: 4,
+      code: '123456',
+      purpose: 'signup',
+      signupProfile: {
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        year: 1995,
+        month: 1,
+        day: 2,
+      },
+    },
+  ]);
+  assert.equal(currentState.signupPhoneActivation, null);
+  assert.equal(currentState.signupPhoneCompletedActivation.phoneNumber, '66959916439');
+  assert.equal(currentState.signupPhoneVerificationPurpose, '');
+  assert.equal(currentState.currentPhoneVerificationCode, '');
+  assert.equal(logs.some((entry) => /准备请求重发/.test(entry.message)), true);
 });
 
 test('phone verification helper acquires a number from 5sim with fallback countries', async () => {

@@ -23,7 +23,7 @@
     const type = normalizeType(target.type);
     const pathname = normalizePathname(target.pathname);
     const hasForm = Boolean(target.hasForm);
-    const isEmailVerificationRoute = /\/email-verification(?:[/?#]|$)/i.test(pathname);
+    const isEmailVerificationRoute = /\/(?:email|contact)-verification(?:[/?#]|$)/i.test(pathname);
     const isSubmitButton = hasForm
       && (
         (tagName === 'button' && (!type || type === 'submit'))

@@ -203,6 +203,51 @@ return {
   });
 });
 
+test('signup verification state treats phone contact verification as verification page', () => {
+  const api = new Function(`
+function getStep4PostVerificationState() {
+  return null;
+}
+
+function isSignupPasswordErrorPage() {
+  return false;
+}
+
+function isPhoneVerificationPageReady() {
+  return true;
+}
+
+function isVerificationPageStillVisible() {
+  throw new Error('phone verification should be checked first');
+}
+
+function isSignupEmailAlreadyExistsPage() {
+  return false;
+}
+
+function getSignupPasswordInput() {
+  return null;
+}
+
+function getSignupPasswordSubmitButton() {
+  return null;
+}
+
+${extractFunction('inspectSignupVerificationState')}
+
+return {
+  run() {
+    return inspectSignupVerificationState();
+  },
+};
+`)();
+
+  assert.deepStrictEqual(api.run(), {
+    state: 'verification',
+    phoneVerificationPage: true,
+  });
+});
+
 test('signup verification state treats profile url as step5 before fields finish rendering', () => {
   const api = new Function(`
 const location = {

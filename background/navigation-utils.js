@@ -72,14 +72,14 @@
       const parsed = parseUrlSafely(rawUrl);
       if (!parsed) return false;
       return isSignupPageHost(parsed.hostname)
-        && /\/create-account\/password(?:[/?#]|$)/i.test(parsed.pathname || '');
+        && /\/(?:create-account|log-in)\/password(?:[/?#]|$)/i.test(parsed.pathname || '');
     }
 
     function isSignupEmailVerificationPageUrl(rawUrl) {
       const parsed = parseUrlSafely(rawUrl);
       if (!parsed) return false;
       return isSignupPageHost(parsed.hostname)
-        && /\/email-verification(?:[/?#]|$)/i.test(parsed.pathname || '');
+        && /\/(?:email|contact)-verification(?:[/?#]|$)/i.test(parsed.pathname || '');
     }
 
     function is163MailHost(hostname = '') {

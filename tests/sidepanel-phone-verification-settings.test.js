@@ -186,7 +186,50 @@ test('updatePhoneVerificationSettingsUI toggles HeroSMS rows from the sms switch
   const api = new Function(`
 const phoneVerificationSectionExpanded = true;
 let latestState = {};
+let currentSignupMethod = 'email';
 const inputPhoneVerificationEnabled = { checked: false };
+const inputPlusModeEnabled = { checked: false };
+const rowSignupMethod = { style: { display: 'none' } };
+const rowSignupPhone = { style: { display: 'none' } };
+const inputSignupPhone = { value: '' };
+const signupMethodButtons = [
+  {
+    dataset: { signupMethod: 'email' },
+    disabled: false,
+    title: '',
+    attrs: {},
+    classList: {
+      values: new Set(['is-active']),
+      toggle(name, active) {
+        if (active) this.values.add(name); else this.values.delete(name);
+      },
+      contains(name) {
+        return this.values.has(name);
+      },
+    },
+    setAttribute(name, value) {
+      this.attrs[name] = String(value);
+    },
+  },
+  {
+    dataset: { signupMethod: 'phone' },
+    disabled: false,
+    title: '',
+    attrs: {},
+    classList: {
+      values: new Set(),
+      toggle(name, active) {
+        if (active) this.values.add(name); else this.values.delete(name);
+      },
+      contains(name) {
+        return this.values.has(name);
+      },
+    },
+    setAttribute(name, value) {
+      this.attrs[name] = String(value);
+    },
+  },
+];
 const rowPhoneVerificationEnabled = { style: { display: 'none' } };
 const rowPhoneVerificationFold = { style: { display: 'none' } };
 const rowPhoneSmsProvider = { style: { display: 'none' } };
@@ -207,6 +250,26 @@ function resolveNormalizedProviderOrderForRuntime(state = {}) {
   return [String(state?.phoneSmsProvider || selectPhoneSmsProvider.value || 'hero-sms').trim().toLowerCase() || 'hero-sms'];
 }
 function updatePhoneSmsProviderOrderSummary() {}
+function isAutoRunLockedPhase() { return false; }
+function isAutoRunPausedPhase() { return false; }
+function isAutoRunScheduledPhase() { return false; }
+function syncLatestState(patch = {}) { latestState = { ...latestState, ...patch }; }
+function syncStepDefinitionsForMode() {}
+function showToast() {}
+function getRuntimeSignupPhoneValue() { return ''; }
+function getSignupPhoneInputValue() { return String(inputSignupPhone.value || '').trim(); }
+function syncSignupPhoneInputFromState() {
+  rowSignupPhone.style.display = 'none';
+}
+const SIGNUP_METHOD_EMAIL = 'email';
+const SIGNUP_METHOD_PHONE = 'phone';
+const DEFAULT_SIGNUP_METHOD = 'email';
+${extractFunction('normalizeSignupMethod')}
+${extractFunction('getSelectedSignupMethod')}
+${extractFunction('setSignupMethod')}
+${extractFunction('canSelectPhoneSignupMethod')}
+${extractFunction('isSignupMethodSwitchLocked')}
+${extractFunction('updateSignupMethodUI')}
 const rowHeroSmsPlatform = { style: { display: 'none' } };
 const rowHeroSmsCountry = { style: { display: 'none' } };
 const rowHeroSmsCountryFallback = { style: { display: 'none' } };
@@ -238,6 +301,8 @@ return {
   setLatestState: (state) => { latestState = state || {}; },
   rowPhoneVerificationEnabled,
   rowPhoneVerificationFold,
+  rowSignupMethod,
+  signupMethodButtons,
   rowPhoneSmsProvider,
   rowPhoneSmsProviderOrder,
   rowPhoneSmsProviderOrderActions,
@@ -308,6 +373,7 @@ return {
   api.inputPhoneVerificationEnabled.checked = true;
   api.updatePhoneVerificationSettingsUI();
   assert.equal(api.rowPhoneVerificationFold.style.display, '');
+  assert.equal(api.rowSignupMethod.style.display, '');
   assert.equal(api.rowPhoneSmsProvider.style.display, '');
   assert.equal(api.rowPhoneSmsProviderOrder.style.display, '');
   assert.equal(api.rowPhoneSmsProviderOrderActions.style.display, '');
@@ -351,6 +417,70 @@ return {
   assert.equal(api.rowNexSmsCountry.style.display, '');
   assert.equal(api.rowNexSmsCountryFallback.style.display, '');
   assert.equal(api.rowNexSmsServiceCode.style.display, '');
+});
+
+test('setSignupMethod switches the active signup method to phone', () => {
+  const api = new Function(`
+const SIGNUP_METHOD_EMAIL = 'email';
+const SIGNUP_METHOD_PHONE = 'phone';
+const DEFAULT_SIGNUP_METHOD = SIGNUP_METHOD_EMAIL;
+let currentSignupMethod = DEFAULT_SIGNUP_METHOD;
+let latestState = {};
+const signupMethodButtons = [
+  {
+    dataset: { signupMethod: 'email' },
+    attrs: {},
+    classList: {
+      values: new Set(['is-active']),
+      toggle(name, active) {
+        if (active) this.values.add(name); else this.values.delete(name);
+      },
+      contains(name) {
+        return this.values.has(name);
+      },
+    },
+    setAttribute(name, value) {
+      this.attrs[name] = String(value);
+    },
+  },
+  {
+    dataset: { signupMethod: 'phone' },
+    attrs: {},
+    classList: {
+      values: new Set(),
+      toggle(name, active) {
+        if (active) this.values.add(name); else this.values.delete(name);
+      },
+      contains(name) {
+        return this.values.has(name);
+      },
+    },
+    setAttribute(name, value) {
+      this.attrs[name] = String(value);
+    },
+  },
+];
+function syncLatestState(patch = {}) {
+  latestState = { ...latestState, ...patch };
+}
+${extractFunction('normalizeSignupMethod')}
+${extractFunction('setSignupMethod')}
+return {
+  signupMethodButtons,
+  setSignupMethod,
+  getLatestState() {
+    return latestState;
+  },
+};
+`)();
+
+  const resolved = api.setSignupMethod('phone');
+
+  assert.equal(resolved, 'phone');
+  assert.equal(api.signupMethodButtons[0].classList.contains('is-active'), false);
+  assert.equal(api.signupMethodButtons[1].classList.contains('is-active'), true);
+  assert.equal(api.getLatestState().signupMethod, 'phone');
+  assert.equal(api.signupMethodButtons[1].attrs['aria-pressed'], 'true');
 });
 
 test('phone sms provider order menu renders selected providers instead of opening an empty dropdown', () => {
@@ -804,6 +934,10 @@ const inputAutoDelayEnabled = { checked: false };
 const inputAutoDelayMinutes = { value: '30' };
 const inputAutoStepDelaySeconds = { value: '' };
 const inputPhoneVerificationEnabled = { checked: true };
+function normalizeSignupMethod(value = '') {
+  return String(value || '').trim().toLowerCase() === 'phone' ? 'phone' : 'email';
+}
+function getSelectedSignupMethod() { return 'phone'; }
 const inputVerificationResendCount = { value: '4' };
 const selectPhoneSmsProvider = { value: '5sim' };
 const inputFiveSimApiKey = { value: 'five-sim-key' };
@@ -929,6 +1063,7 @@ return { collectSettingsPayload };
   const payload = api.collectSettingsPayload();
 
   assert.equal(payload.phoneVerificationEnabled, true);
+  assert.equal(payload.signupMethod, 'phone');
   assert.equal(payload.accountRunHistoryTextEnabled, true);
   assert.equal(payload.accountRunHistoryHelperBaseUrl, 'http://127.0.0.1:17373');
   assert.equal(payload.gptOnlyModeEnabled, true);
@@ -1003,6 +1138,10 @@ const inputAutoDelayEnabled = { checked: false };
 const inputAutoDelayMinutes = { value: '30' };
 const inputAutoStepDelaySeconds = { value: '' };
 const inputPhoneVerificationEnabled = { checked: false };
+function normalizeSignupMethod(value = '') {
+  return String(value || '').trim().toLowerCase() === 'phone' ? 'phone' : 'email';
+}
+function getSelectedSignupMethod() { return 'email'; }
 const inputVerificationResendCount = { value: '4' };
 const inputHeroSmsApiKey = { value: '' };
 const inputHeroSmsReuseEnabled = { checked: true };
