@@ -4,6 +4,7 @@
   function createPhoneVerificationHelpers(deps = {}) {
     const {
       addLog,
+      broadcastDataUpdate = null,
       ensureStep8SignupPageReady,
       fetchImpl = (...args) => fetch(...args),
       getOAuthFlowStepTimeoutMs,
@@ -1909,10 +1910,10 @@
                 );
                 const activation = parseActivationPayload(payload, buildFallbackActivation(requestAction));
                 if (activation) {
-                  const { countryLabel: _ignoredCountryLabel, ...activationWithoutCountryLabel } = activation;
                   return {
-                    ...activationWithoutCountryLabel,
+                    ...activation,
                     countryId: countryConfig.id,
+                    countryLabel: countryConfig.label,
                   };
                 }
                 const payloadText = describeHeroSmsPayload(payload);
@@ -2531,19 +2532,28 @@
       await persistReusableActivation(null);
     }
 
+    async function setPhoneRuntimeState(updates = {}) {
+      await setState(updates);
+      if (typeof broadcastDataUpdate === 'function') {
+        broadcastDataUpdate(updates);
+      }
+    }
+
     async function clearSignupPhoneRegistrationState(reason = '') {
       const state = await getState();
       const updates = {
         signupPhoneNumber: '',
         signupPhoneActivation: null,
+        signupPhoneCompletedActivation: null,
         signupPhoneVerificationRequestedAt: null,
         signupPhoneVerificationPurpose: '',
         [PHONE_VERIFICATION_CODE_STATE_KEY]: '',
       };
       if (String(state?.accountIdentifierType || '').trim().toLowerCase() === 'phone') {
         updates.accountIdentifier = '';
+        updates.accountIdentifierType = null;
       }
-      await setState(updates);
+      await setPhoneRuntimeState(updates);
       if (reason) {
         await addLog(reason, 'warn');
       }
@@ -2555,7 +2565,7 @@
       if (!normalizedActivation) {
         throw new Error('步骤 2：接码平台返回的手机号订单无效。');
       }
-      await setState({
+      await setPhoneRuntimeState({
         signupPhoneNumber: normalizedActivation.phoneNumber,
         signupPhoneActivation: normalizedActivation,
         signupPhoneVerificationRequestedAt: null,
@@ -2579,7 +2589,7 @@
 
       const activeActivation = normalizeActivation(state?.signupPhoneActivation);
       if (activeActivation && activeActivation.activationId === preferredActivation.activationId) {
-        await setState({
+        await setPhoneRuntimeState({
           signupPhoneNumber: activeActivation.phoneNumber,
           signupPhoneVerificationPurpose: 'login',
         });
@@ -2592,7 +2602,7 @@
         throw new Error(`步骤 ${visibleStep}：无法复用当前注册手机号，请重新执行步骤 ${visibleStep >= 11 ? 10 : 7}。`);
       }
 
-      await setState({
+      await setPhoneRuntimeState({
         signupPhoneActivation: normalizedActivation,
         signupPhoneCompletedActivation: preferredActivation,
         signupPhoneNumber: normalizedActivation.phoneNumber,
@@ -2610,11 +2620,19 @@
       if (normalizedActivation) {
         await cancelPhoneActivation(state, normalizedActivation);
       }
-      await setState({
+      const updates = {
         signupPhoneActivation: null,
+        signupPhoneNumber: '',
         signupPhoneVerificationRequestedAt: null,
         signupPhoneVerificationPurpose: '',
-      });
+        signupPhoneCompletedActivation: null,
+        [PHONE_VERIFICATION_CODE_STATE_KEY]: '',
+      };
+      if (String(state?.accountIdentifierType || '').trim().toLowerCase() === 'phone') {
+        updates.accountIdentifier = '';
+        updates.accountIdentifierType = null;
+      }
+      await setPhoneRuntimeState(updates);
     }
 
     async function waitForSignupPhoneCode(state = {}, activation, options = {}) {
@@ -2637,7 +2655,7 @@
       let lastLoggedPollCount = 0;
 
       for (let windowIndex = 1; windowIndex <= timeoutWindows; windowIndex += 1) {
-        await setState({
+        await setPhoneRuntimeState({
           signupPhoneActivation: normalizedActivation,
           signupPhoneNumber: normalizedActivation.phoneNumber,
           signupPhoneVerificationPurpose: 'signup',
@@ -2673,7 +2691,7 @@
               );
             },
           });
-          await setState({
+          await setPhoneRuntimeState({
             [PHONE_VERIFICATION_CODE_STATE_KEY]: String(code || '').trim(),
             signupPhoneVerificationRequestedAt: Date.now(),
           });
@@ -2709,7 +2727,7 @@
     async function finalizeSignupPhoneActivationAfterSuccess(state = {}, activation = null) {
       const normalizedActivation = normalizeActivation(activation || state?.signupPhoneActivation);
       if (!normalizedActivation) {
-        await setState({
+        await setPhoneRuntimeState({
           signupPhoneActivation: null,
           signupPhoneVerificationRequestedAt: null,
           signupPhoneVerificationPurpose: '',
@@ -2719,7 +2737,7 @@
       }
 
       await completePhoneActivation(state, normalizedActivation);
-      await setState({
+      await setPhoneRuntimeState({
         signupPhoneActivation: null,
         signupPhoneCompletedActivation: {
           ...normalizedActivation,
@@ -2739,7 +2757,7 @@
       const normalizedActivation = normalizeActivation(activation || state?.signupPhoneActivation);
       const visibleStep = Math.floor(Number(options?.visibleStep || options?.step) || 0) || 8;
       if (!normalizedActivation) {
-        await setState({
+        await setPhoneRuntimeState({
           signupPhoneActivation: null,
           signupPhoneVerificationRequestedAt: null,
           signupPhoneVerificationPurpose: '',
@@ -2749,7 +2767,7 @@
       }
 
       await completePhoneActivation(state, normalizedActivation);
-      await setState({
+      await setPhoneRuntimeState({
         signupPhoneActivation: null,
         signupPhoneCompletedActivation: {
           ...normalizedActivation,
@@ -2794,7 +2812,7 @@
             },
           });
 
-          await setState({
+          await setPhoneRuntimeState({
             signupPhoneVerificationRequestedAt: Date.now(),
             signupPhoneVerificationPurpose: 'signup',
             [PHONE_VERIFICATION_CODE_STATE_KEY]: String(code || '').trim(),
@@ -2840,7 +2858,7 @@
         if (shouldCancelActivation) {
           await cancelSignupPhoneActivation(state, activation).catch(() => {});
         }
-        await setState({
+        await setPhoneRuntimeState({
           signupPhoneVerificationRequestedAt: null,
           signupPhoneVerificationPurpose: '',
           [PHONE_VERIFICATION_CODE_STATE_KEY]: '',
@@ -2921,7 +2939,7 @@
             intervalMs: pollIntervalSeconds * 1000,
             maxRounds: pollMaxRounds,
           });
-          await setState({
+          await setPhoneRuntimeState({
             [PHONE_VERIFICATION_CODE_STATE_KEY]: String(code || '').trim(),
             signupPhoneVerificationRequestedAt: Date.now(),
           });
@@ -2988,7 +3006,7 @@
             },
           });
 
-          await setState({
+          await setPhoneRuntimeState({
             [PHONE_VERIFICATION_CODE_STATE_KEY]: String(code || '').trim(),
             signupPhoneVerificationRequestedAt: Date.now(),
             signupPhoneVerificationPurpose: 'login',
@@ -3029,7 +3047,7 @@
         if (shouldCancelActivation && activation) {
           await cancelPhoneActivation(state, activation).catch(() => {});
         }
-        await setState({
+        await setPhoneRuntimeState({
           signupPhoneActivation: null,
           [PHONE_VERIFICATION_CODE_STATE_KEY]: '',
           signupPhoneVerificationRequestedAt: null,

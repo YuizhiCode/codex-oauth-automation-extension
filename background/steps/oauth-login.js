@@ -41,20 +41,32 @@
       return /缺少|未配置|请输入|无效|错误|失败|401|认证失败|未授权|unauthorized|invalid/i.test(message);
     }
 
+    function resolveLoginIdentifierType(state = {}, fallback = '') {
+      if (
+        String(state?.signupMethod || '').trim().toLowerCase() === 'phone'
+        || String(state?.resolvedSignupMethod || '').trim().toLowerCase() === 'phone'
+        || Boolean(String(state?.signupPhoneNumber || '').trim())
+        || Boolean(state?.signupPhoneCompletedActivation?.phoneNumber)
+        || Boolean(state?.signupPhoneActivation?.phoneNumber)
+      ) {
+        return 'phone';
+      }
+
+      if (String(state?.accountIdentifierType || '').trim().toLowerCase() === 'phone') {
+        return 'phone';
+      }
+
+      if (String(fallback || '').trim().toLowerCase() === 'phone') {
+        return 'phone';
+      }
+
+      return 'email';
+    }
+
     async function executeStep7(state) {
       const visibleStep = Math.floor(Number(state?.visibleStep) || 0);
       const completionStep = visibleStep > 0 ? visibleStep : 7;
-      const resolvedIdentifierType = String(
-        state?.accountIdentifierType
-        || state?.resolvedSignupMethod
-        || state?.signupMethod
-        || (state?.signupPhoneNumber ? 'phone' : '')
-        || (state?.signupPhoneCompletedActivation?.phoneNumber ? 'phone' : '')
-        || (state?.signupPhoneActivation?.phoneNumber ? 'phone' : '')
-        || ''
-      ).trim().toLowerCase() === 'phone'
-        ? 'phone'
-        : 'email';
+      const resolvedIdentifierType = resolveLoginIdentifierType(state);
       const phoneNumber = String(
         state?.signupPhoneNumber
         || (resolvedIdentifierType === 'phone' ? state?.accountIdentifier : '')
@@ -80,17 +92,7 @@
         try {
           const currentState = attempt === 1 ? state : await getState();
           const password = currentState.password || currentState.customPassword || '';
-          const currentIdentifierType = String(
-            currentState?.accountIdentifierType
-            || currentState?.resolvedSignupMethod
-            || currentState?.signupMethod
-            || (currentState?.signupPhoneNumber ? 'phone' : '')
-            || (currentState?.signupPhoneCompletedActivation?.phoneNumber ? 'phone' : '')
-            || (currentState?.signupPhoneActivation?.phoneNumber ? 'phone' : '')
-            || resolvedIdentifierType
-          ).trim().toLowerCase() === 'phone'
-            ? 'phone'
-            : 'email';
+          const currentIdentifierType = resolveLoginIdentifierType(currentState, resolvedIdentifierType);
           const currentPhoneNumber = String(
             currentState?.signupPhoneNumber
             || (currentIdentifierType === 'phone' ? currentState?.accountIdentifier : '')
@@ -154,6 +156,11 @@
                   || currentState?.signupPhoneActivation?.countryLabel
                   || ''
                 ).trim(),
+                heroSmsCountryId: currentState?.heroSmsCountryId ?? null,
+                heroSmsCountryLabel: String(currentState?.heroSmsCountryLabel || '').trim(),
+                heroSmsCountryFallback: Array.isArray(currentState?.heroSmsCountryFallback)
+                  ? currentState.heroSmsCountryFallback
+                  : [],
                 accountIdentifier,
                 loginIdentifierType: currentIdentifierType,
                 password,

@@ -277,6 +277,33 @@ test('phone signup does not enter the registered account reuse pool', async () =
   assert.equal(logs.some(({ message }) => /手机号注册.*复用账号池|手机号注册不进入待复用账号池/.test(message)), true);
 });
 
+test('phone signup does not resume from the registered account reuse pool', async () => {
+  const api = createApi({
+    signupMethod: 'phone',
+    resolvedSignupMethod: 'phone',
+    phoneVerificationEnabled: true,
+    accounts: [{
+      email: 'registered@example.com',
+      password: 'Secret123!',
+      createdAt: 1,
+      mailConfig: {
+        mailProvider: '163',
+      },
+    }],
+    stepStatuses: Object.fromEntries(Array.from({ length: 10 }, (_, index) => [String(index + 1), 'pending'])),
+  });
+
+  const result = await api.prepareRegisteredAccountResumeForAutoRun();
+  const { currentState, broadcasts, logs } = api.snapshot();
+
+  assert.equal(result, null);
+  assert.equal(currentState.email, undefined);
+  assert.equal(currentState.password, undefined);
+  assert.equal(currentState.accounts.length, 1);
+  assert.equal(broadcasts.length, 0);
+  assert.equal(logs.some(({ message }) => /手机号注册.*复用账号池|手机号模式.*复用账号池/.test(message)), true);
+});
+
 test('registered account resume restores the saved mailbox provider before continuing', async () => {
   const api = createApi({
     mailProvider: '163',

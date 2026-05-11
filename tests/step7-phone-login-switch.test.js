@@ -51,6 +51,282 @@ function extractFunction(name) {
   return source.slice(start, end);
 }
 
+function extractConst(name) {
+  const pattern = new RegExp(`const\\s+${name}\\s*=\\s*[\\s\\S]*?;`);
+  const match = source.match(pattern);
+  if (!match) {
+    throw new Error(`missing const ${name}`);
+  }
+  return match[0];
+}
+
+function extractFunctionIfPresent(name) {
+  try {
+    return extractFunction(name);
+  } catch (error) {
+    const message = String(error?.message || '');
+    if (
+      message.includes(`missing function ${name}`)
+      || message.includes(`missing body for function ${name}`)
+    ) {
+      return '';
+    }
+    throw error;
+  }
+}
+
+test('findLoginPhoneEntryTrigger recognizes Chinese continue-with-phone action text', () => {
+  const api = new Function(`
+const phoneLoginButton = {
+  textContent: '\\u4f7f\\u7528\\u7535\\u8bdd\\u53f7\\u7801\\u7ee7\\u7eed',
+  value: '',
+  disabled: false,
+  getAttribute(name) {
+    if (name === 'type') return 'button';
+    return '';
+  },
+  getBoundingClientRect() {
+    return { width: 220, height: 44 };
+  },
+};
+
+const document = {
+  readyState: 'complete',
+  body: {},
+  querySelectorAll(selector) {
+    if (selector === 'button, a, [role="button"], [role="link"], input[type="button"], input[type="submit"]') {
+      return [phoneLoginButton];
+    }
+    return [];
+  },
+};
+
+${extractConst('LOGIN_SWITCH_TO_PHONE_PATTERN')}
+${extractConst('LOGIN_PHONE_ACTION_PATTERN')}
+${extractConst('LOGIN_EXTERNAL_IDP_PATTERN')}
+${extractConst('LOGIN_CODE_ONLY_ACTION_PATTERN')}
+
+function isVisibleElement(el) {
+  return Boolean(el);
+}
+
+function isActionEnabled(el) {
+  return Boolean(el) && !el.disabled && el.getAttribute('aria-disabled') !== 'true';
+}
+
+function getActionText(el) {
+  return [el?.textContent, el?.value, el?.getAttribute?.('aria-label'), el?.getAttribute?.('title')]
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\\s+/g, ' ')
+    .trim();
+}
+
+function log() {}
+
+${extractFunction('findLoginPhoneEntryTrigger')}
+
+return {
+  run() {
+    return findLoginPhoneEntryTrigger();
+  },
+};
+`)();
+
+  assert.equal(Boolean(api.run()), true);
+});
+
+test('inspectLoginAuthState treats phone-only login action as entry page', () => {
+  const api = new Function(`
+const phoneLoginButton = {
+  textContent: '\\u4f7f\\u7528\\u7535\\u8bdd\\u53f7\\u7801\\u7ee7\\u7eed',
+  value: '',
+  disabled: false,
+  getAttribute(name) {
+    if (name === 'type') return 'button';
+    return '';
+  },
+  getBoundingClientRect() {
+    return { width: 220, height: 44 };
+  },
+};
+
+const location = {
+  href: 'https://auth.openai.com/log-in',
+  pathname: '/log-in',
+};
+
+const document = {
+  readyState: 'complete',
+  body: {},
+  querySelectorAll(selector) {
+    if (selector === 'button, a, [role="button"], [role="link"], input[type="button"], input[type="submit"]') {
+      return [phoneLoginButton];
+    }
+    return [];
+  },
+};
+
+${extractConst('LOGIN_SWITCH_TO_PHONE_PATTERN')}
+${extractConst('LOGIN_PHONE_ACTION_PATTERN')}
+${extractConst('LOGIN_EXTERNAL_IDP_PATTERN')}
+${extractConst('LOGIN_CODE_ONLY_ACTION_PATTERN')}
+
+function isVisibleElement(el) { return Boolean(el); }
+function isActionEnabled(el) {
+  return Boolean(el) && !el.disabled && el.getAttribute('aria-disabled') !== 'true';
+}
+function getActionText(el) {
+  return [el?.textContent, el?.value, el?.getAttribute?.('aria-label'), el?.getAttribute?.('title')]
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\\s+/g, ' ')
+    .trim();
+}
+function log() {}
+function getLoginTimeoutErrorPageState() { return null; }
+function getVerificationCodeTarget() { return null; }
+function getLoginPasswordInput() { return null; }
+function getLoginEmailInput() { return null; }
+function getLoginPhoneInput() { return null; }
+function findOneTimeCodeLoginTrigger() { return null; }
+function findLoginEntryTrigger() { return null; }
+function findLoginMoreOptionsTrigger() { return null; }
+function getLoginSubmitButton() { return null; }
+function isVerificationPageStillVisible() { return false; }
+function isAddPhonePageReady() { return false; }
+function isAddEmailPageReady() { return false; }
+function isPhoneVerificationPageReady() { return false; }
+function isStep8Ready() { return false; }
+function isOAuthConsentPage() { return false; }
+function getLoginVerificationDisplayedEmail() { return ''; }
+
+${extractFunction('findLoginPhoneEntryTrigger')}
+${extractFunction('inspectLoginAuthState')}
+
+return {
+  run() {
+    return inspectLoginAuthState();
+  },
+};
+`)();
+
+  const snapshot = api.run();
+
+  assert.equal(snapshot.state, 'entry_page');
+  assert.equal(Boolean(snapshot.phoneEntryTrigger), true);
+});
+
+test('inspectLoginAuthState treats visible email input as email page when phone option is present', () => {
+  const api = new Function(`
+const emailInput = {
+  tagName: 'INPUT',
+  type: 'email',
+  name: 'username',
+  id: 'username',
+  value: '',
+  getAttribute(name) {
+    if (name === 'type') return this.type;
+    if (name === 'name') return this.name;
+    if (name === 'id') return this.id;
+    if (name === 'placeholder') return 'Email address';
+    return '';
+  },
+  getBoundingClientRect() {
+    return { width: 260, height: 44 };
+  },
+};
+const phoneLoginButton = {
+  textContent: 'Continue with phone number',
+  value: '',
+  disabled: false,
+  getAttribute(name) {
+    if (name === 'type') return 'button';
+    return '';
+  },
+  getBoundingClientRect() {
+    return { width: 220, height: 44 };
+  },
+};
+
+const location = {
+  href: 'https://auth.openai.com/log-in',
+  pathname: '/log-in',
+};
+
+const document = {
+  body: {
+    innerText: 'Email address Continue with phone number',
+    textContent: 'Email address Continue with phone number',
+  },
+  querySelector(selector) {
+    if (String(selector).includes('input[type="email"]')) {
+      return emailInput;
+    }
+    return null;
+  },
+  querySelectorAll(selector) {
+    if (selector === 'button, a, [role="button"], [role="link"], input[type="button"], input[type="submit"]') {
+      return [phoneLoginButton];
+    }
+    return [];
+  },
+};
+
+${extractConst('LOGIN_PHONE_ENTRY_PAGE_PATTERN')}
+${extractConst('LOGIN_CODE_ONLY_ACTION_PATTERN')}
+${extractConst('LOGIN_EXTERNAL_IDP_PATTERN')}
+
+function isVisibleElement(el) { return Boolean(el); }
+function isActionEnabled(el) {
+  return Boolean(el) && !el.disabled && el.getAttribute('aria-disabled') !== 'true';
+}
+function getActionText(el) {
+  return [el?.textContent, el?.value, el?.getAttribute?.('aria-label'), el?.getAttribute?.('title')]
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\\s+/g, ' ')
+    .trim();
+}
+function getPageTextSnapshot() {
+  return String(document.body.innerText || document.body.textContent || '');
+}
+function isAddPhonePageReady() { return false; }
+function isPhoneVerificationPageReady() { return false; }
+function getLoginTimeoutErrorPageState() { return null; }
+function getVerificationCodeTarget() { return null; }
+function getLoginPasswordInput() { return null; }
+function getLoginPhoneInput() { return null; }
+function findOneTimeCodeLoginTrigger() { return null; }
+function findLoginEntryTrigger() { return null; }
+function findLoginPhoneEntryTrigger() { return phoneLoginButton; }
+function findLoginMoreOptionsTrigger() { return null; }
+function getLoginSubmitButton() { return null; }
+function isVerificationPageStillVisible() { return false; }
+function isAddEmailPageReady() { return false; }
+function isStep8Ready() { return false; }
+function isOAuthConsentPage() { return false; }
+function getLoginVerificationDisplayedEmail() { return ''; }
+
+${extractFunction('isLoginPhoneUsernameKind')}
+${extractFunction('isLoginPhoneEntryPageText')}
+${extractFunction('getLoginEmailInput')}
+${extractFunction('inspectLoginAuthState')}
+
+return {
+  run() {
+    return inspectLoginAuthState();
+  },
+};
+`)();
+
+  const snapshot = api.run();
+
+  assert.equal(snapshot.state, 'email_page');
+  assert.equal(Boolean(snapshot.emailInput), true);
+  assert.equal(Boolean(snapshot.phoneEntryTrigger), true);
+});
+
 test('step 7 phone login switches from email login page to phone login', async () => {
   const api = new Function(`
 let switchCalls = [];
@@ -109,6 +385,719 @@ return {
   assert.equal(switchCalls.length, 1);
   assert.equal(switchCalls[0].payload.phoneNumber, '+66812345678');
   assert.equal(switchCalls[0].snapshot.state, 'email_page');
+});
+
+test('step 7 phone login clicks phone action when auth page is entry page', async () => {
+  const api = new Function(`
+let openCalls = [];
+const phoneLoginButton = {
+  textContent: '\\u4f7f\\u7528\\u7535\\u8bdd\\u53f7\\u7801\\u7ee7\\u7eed',
+};
+
+async function waitForKnownLoginAuthState() {
+  return {
+    state: 'entry_page',
+    phoneEntryTrigger: phoneLoginButton,
+    loginEntryTrigger: null,
+    url: 'https://auth.openai.com/log-in',
+  };
+}
+
+function normalizeStep6Snapshot(snapshot) { return snapshot; }
+function log() {}
+function throwForStep6FatalState() {}
+async function step6LoginFromEmailPage() {
+  throw new Error('should not submit email in phone login mode');
+}
+async function step6LoginFromPhonePage(payload, snapshot) {
+  return { branch: 'phone', payload, snapshot };
+}
+async function step6LoginFromPasswordPage(payload, snapshot) {
+  return { branch: 'password', payload, snapshot };
+}
+async function step6OpenLoginEntry(payload, snapshot) {
+  openCalls.push({ payload, snapshot });
+  return { branch: 'open_entry', payload, snapshot };
+}
+async function switchFromEmailPageToPhoneLogin() {
+  throw new Error('entry page should use step6OpenLoginEntry first');
+}
+async function createStep6LoginTimeoutRecoveryTransition() {
+  throw new Error('should not recover timeout');
+}
+async function finalizeStep6VerificationReady(options) {
+  return { branch: 'verification', options };
+}
+function createStep6OAuthConsentSuccessResult(snapshot, options) {
+  return { branch: 'oauth', snapshot, options };
+}
+
+${extractFunction('step6_login')}
+
+return {
+  async run() {
+    const result = await step6_login({
+      email: '',
+      phoneNumber: '+66812345678',
+      loginIdentifierType: 'phone',
+      visibleStep: 7,
+    });
+    return { result, openCalls };
+  },
+};
+`)();
+
+  const { result, openCalls } = await api.run();
+
+  assert.equal(result.branch, 'open_entry');
+  assert.equal(openCalls.length, 1);
+  assert.equal(openCalls[0].snapshot.state, 'entry_page');
+  assert.equal(Boolean(openCalls[0].snapshot.phoneEntryTrigger), true);
+});
+
+test('step 7 email login waits for default email input when entry page has no email button', async () => {
+  const api = new Function(`
+let waitedForDefaultEmailInput = 0;
+const emailInput = { id: 'email' };
+const phoneLoginButton = { textContent: 'Continue with phone number' };
+
+function normalizeStep6Snapshot(snapshot) { return snapshot; }
+function findLoginPhoneEntryTrigger() { return phoneLoginButton; }
+function findLoginEntryTrigger() { return null; }
+function isActionEnabled(el) { return Boolean(el); }
+function getActionText(el) { return el?.textContent || ''; }
+function log() {}
+async function humanPause() {}
+async function waitForLoginPhoneEntryTriggerReady() {
+  throw new Error('email login should not wait for phone entry trigger');
+}
+async function clickActionWhenReady() {
+  throw new Error('email login should not click an entry trigger');
+}
+async function activateLoginPhoneEntryTrigger() {
+  throw new Error('email login should not activate phone entry trigger');
+}
+async function waitForLoginEntryOpenTransition() {
+  waitedForDefaultEmailInput += 1;
+  return { state: 'email_page', emailInput, url: 'https://auth.openai.com/log-in' };
+}
+async function step6LoginFromEmailPage(payload, snapshot) {
+  return { branch: 'email', payload, snapshot };
+}
+async function switchFromEmailPageToPhoneLogin() {
+  throw new Error('should not switch email login to phone');
+}
+async function step6LoginFromPasswordPage() {
+  throw new Error('should not submit password');
+}
+async function step6LoginFromPhonePage() {
+  throw new Error('should not submit phone');
+}
+async function finalizeStep6VerificationReady() {
+  throw new Error('should not finalize verification');
+}
+function createStep6OAuthConsentSuccessResult() {
+  throw new Error('should not create oauth success');
+}
+function createStep6AddEmailSuccessResult() {
+  throw new Error('should not create add email success');
+}
+async function createStep6LoginTimeoutRecoveryTransition() {
+  throw new Error('should not recover timeout');
+}
+function createStep6RecoverableResult(reason, snapshot, options = {}) {
+  return { step6Outcome: 'recoverable', reason, snapshot, ...options };
+}
+
+${extractFunction('step6OpenLoginEntry')}
+
+return {
+  async run() {
+    const result = await step6OpenLoginEntry({
+      email: 'user@example.com',
+      loginIdentifierType: 'email',
+      visibleStep: 7,
+    }, {
+      state: 'entry_page',
+      loginEntryTrigger: null,
+      phoneEntryTrigger: phoneLoginButton,
+    });
+    return { result, waitedForDefaultEmailInput };
+  },
+};
+`)();
+
+  const { result, waitedForDefaultEmailInput } = await api.run();
+
+  assert.equal(result.branch, 'email');
+  assert.equal(result.snapshot.emailInput.id, 'email');
+  assert.equal(waitedForDefaultEmailInput, 1);
+});
+
+test('switchFromEmailPageToPhoneLogin clicks visible Chinese continue-with-phone button', async () => {
+  const api = new Function(`
+const clicks = [];
+const phoneLoginButton = {
+  textContent: '\\u4f7f\\u7528\\u7535\\u8bdd\\u53f7\\u7801\\u7ee7\\u7eed',
+  value: '',
+  disabled: false,
+  getAttribute(name) {
+    if (name === 'type') return 'button';
+    return '';
+  },
+  getBoundingClientRect() {
+    return { left: 12, top: 20, width: 220, height: 44 };
+  },
+};
+
+const document = {
+  readyState: 'complete',
+  body: {},
+  querySelectorAll(selector) {
+    if (selector === 'button, a, [role="button"], [role="link"], input[type="button"], input[type="submit"]') {
+      return [phoneLoginButton];
+    }
+    return [];
+  },
+};
+
+const location = {
+  href: 'https://auth.openai.com/log-in',
+};
+
+${extractConst('LOGIN_SWITCH_TO_PHONE_PATTERN')}
+${extractConst('LOGIN_PHONE_ACTION_PATTERN')}
+${extractConst('LOGIN_EXTERNAL_IDP_PATTERN')}
+${extractConst('LOGIN_CODE_ONLY_ACTION_PATTERN')}
+${extractConst('LOGIN_MORE_OPTIONS_PATTERN')}
+
+function normalizeStep6Snapshot(snapshot) { return snapshot; }
+function isVisibleElement(el) { return Boolean(el); }
+function isActionEnabled(el) { return Boolean(el) && !el.disabled && el.getAttribute('aria-disabled') !== 'true'; }
+function getActionText(el) {
+  return [el?.textContent, el?.value, el?.getAttribute?.('aria-label'), el?.getAttribute?.('title')]
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\\s+/g, ' ')
+    .trim();
+}
+function log() {}
+async function humanPause() {}
+function throwIfStopped() {}
+function simulateClick(target) {
+  clicks.push(getActionText(target));
+}
+async function sleep() {}
+function inspectLoginAuthState() {
+  return { state: 'email_page', phoneEntryTrigger: phoneLoginButton };
+}
+async function waitForPhoneLoginEntrySwitchTransition() {
+  return { state: 'phone_entry_page', phoneInput: { id: 'phone' } };
+}
+async function step6LoginFromPhonePage(payload, snapshot) {
+  return { branch: 'phone', payload, snapshot };
+}
+async function step6LoginFromPasswordPage() {
+  throw new Error('should not go to password');
+}
+async function finalizeStep6VerificationReady() {
+  throw new Error('should not finalize verification');
+}
+function createStep6OAuthConsentSuccessResult() {
+  throw new Error('should not go to oauth consent');
+}
+function createStep6AddEmailSuccessResult() {
+  throw new Error('should not go to add email');
+}
+async function createStep6LoginTimeoutRecoveryTransition() {
+  throw new Error('should not recover timeout');
+}
+function createStep6RecoverableResult(reason, snapshot, options = {}) {
+  return { step6Outcome: 'recoverable', reason, snapshot, ...options };
+}
+function getLoginAuthStateLabel(snapshot) {
+  return snapshot?.state || 'unknown';
+}
+
+${extractFunction('findLoginPhoneEntryTrigger')}
+${extractFunction('findLoginMoreOptionsTrigger')}
+${extractFunction('isDocumentReadyForAction')}
+${extractFunction('isElementConnectedToDocument')}
+${extractFunction('waitForStableButtonRect')}
+${extractFunction('waitForActionReady')}
+${extractFunction('clickActionWhenReady')}
+${extractFunction('waitForLoginPhoneEntryTriggerReady')}
+${extractFunction('dispatchActivationEvent')}
+${extractFunction('activateLoginPhoneEntryTrigger')}
+${extractFunction('switchFromEmailPageToPhoneLogin')}
+
+return {
+  async run() {
+    const result = await switchFromEmailPageToPhoneLogin({
+      phoneNumber: '+66812345678',
+      loginIdentifierType: 'phone',
+      visibleStep: 7,
+    }, {
+      state: 'email_page',
+      phoneEntryTrigger: null,
+      moreOptionsTrigger: null,
+    });
+    return { result, clicks };
+  },
+};
+`)();
+
+  const { result, clicks } = await api.run();
+
+  assert.deepEqual(clicks, ['使用电话号码继续']);
+  assert.equal(result.branch, 'phone');
+  assert.equal(result.snapshot.state, 'phone_entry_page');
+});
+
+test('switchFromEmailPageToPhoneLogin waits for delayed Chinese continue-with-phone button', async () => {
+  const api = new Function(`
+const clicks = [];
+let now = 0;
+let phoneButtonVisible = false;
+
+const phoneLoginButton = {
+  textContent: '\\u4f7f\\u7528\\u7535\\u8bdd\\u53f7\\u7801\\u7ee7\\u7eed',
+  value: '',
+  disabled: false,
+  getAttribute(name) {
+    if (name === 'type') return 'button';
+    return '';
+  },
+  scrollIntoView() {},
+  focus() {},
+  getBoundingClientRect() {
+    return { left: 12, top: 20, width: 220, height: 44 };
+  },
+};
+
+const document = {
+  readyState: 'complete',
+  body: {},
+  querySelectorAll(selector) {
+    if (selector === 'button, a, [role="button"], [role="link"], input[type="button"], input[type="submit"]') {
+      return phoneButtonVisible ? [phoneLoginButton] : [];
+    }
+    return [];
+  },
+};
+
+const location = {
+  href: 'https://auth.openai.com/log-in',
+};
+
+const Date = {
+  now() {
+    return now;
+  },
+};
+
+${extractConst('LOGIN_SWITCH_TO_PHONE_PATTERN')}
+${extractConst('LOGIN_PHONE_ACTION_PATTERN')}
+${extractConst('LOGIN_EXTERNAL_IDP_PATTERN')}
+${extractConst('LOGIN_CODE_ONLY_ACTION_PATTERN')}
+${extractConst('LOGIN_MORE_OPTIONS_PATTERN')}
+
+function normalizeStep6Snapshot(snapshot) { return snapshot; }
+function isVisibleElement(el) { return Boolean(el); }
+function isActionEnabled(el) { return Boolean(el) && !el.disabled && el.getAttribute('aria-disabled') !== 'true'; }
+function getActionText(el) {
+  return [el?.textContent, el?.value, el?.getAttribute?.('aria-label'), el?.getAttribute?.('title')]
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\\s+/g, ' ')
+    .trim();
+}
+function log() {}
+async function humanPause() {}
+function throwIfStopped() {}
+function simulateClick(target) {
+  clicks.push(getActionText(target));
+}
+async function sleep(ms) {
+  now += ms;
+  if (now >= 650) phoneButtonVisible = true;
+}
+function inspectLoginAuthState() {
+  return {
+    state: 'email_page',
+    phoneEntryTrigger: findLoginPhoneEntryTrigger(),
+    moreOptionsTrigger: null,
+  };
+}
+async function waitForPhoneLoginEntrySwitchTransition() {
+  return { state: 'phone_entry_page', phoneInput: { id: 'phone' } };
+}
+async function step6LoginFromPhonePage(payload, snapshot) {
+  return { branch: 'phone', payload, snapshot };
+}
+async function step6LoginFromPasswordPage() {
+  throw new Error('should not go to password');
+}
+async function finalizeStep6VerificationReady() {
+  throw new Error('should not finalize verification');
+}
+function createStep6OAuthConsentSuccessResult() {
+  throw new Error('should not go to oauth consent');
+}
+function createStep6AddEmailSuccessResult() {
+  throw new Error('should not go to add email');
+}
+async function createStep6LoginTimeoutRecoveryTransition() {
+  throw new Error('should not recover timeout');
+}
+function createStep6RecoverableResult(reason, snapshot, options = {}) {
+  return { step6Outcome: 'recoverable', reason, snapshot, ...options };
+}
+function getLoginAuthStateLabel(snapshot) {
+  return snapshot?.state || 'unknown';
+}
+
+${extractFunction('findLoginPhoneEntryTrigger')}
+${extractFunction('findLoginMoreOptionsTrigger')}
+${extractFunction('isDocumentReadyForAction')}
+${extractFunction('isElementConnectedToDocument')}
+${extractFunctionIfPresent('waitForStableButtonRect')}
+${extractFunctionIfPresent('waitForDocumentActionReady')}
+${extractFunctionIfPresent('waitForActionReady')}
+${extractFunctionIfPresent('clickActionWhenReady')}
+${extractFunctionIfPresent('waitForLoginPhoneEntryTriggerReady')}
+${extractFunctionIfPresent('dispatchActivationEvent')}
+${extractFunctionIfPresent('activateLoginPhoneEntryTrigger')}
+${extractFunction('switchFromEmailPageToPhoneLogin')}
+
+return {
+  async run() {
+    const result = await switchFromEmailPageToPhoneLogin({
+      phoneNumber: '+66812345678',
+      loginIdentifierType: 'phone',
+      visibleStep: 7,
+    }, {
+      state: 'email_page',
+      phoneEntryTrigger: null,
+      moreOptionsTrigger: null,
+    });
+    return { result, clicks, now };
+  },
+};
+`)();
+
+  const { result, clicks, now } = await api.run();
+
+  assert.deepEqual(clicks, ['使用电话号码继续']);
+  assert.equal(result.branch, 'phone');
+  assert.equal(result.snapshot.state, 'phone_entry_page');
+  assert.equal(now >= 650, true);
+});
+
+test('switchFromEmailPageToPhoneLogin uses native click for Chinese continue-with-phone button', async () => {
+  const api = new Function(`
+const clicks = [];
+const logs = [];
+let nativeClickCount = 0;
+let dispatchedEvents = [];
+const phoneLoginButton = {
+  tagName: 'BUTTON',
+  textContent: '\\u4f7f\\u7528\\u7535\\u8bdd\\u53f7\\u7801\\u7ee7\\u7eed',
+  value: '',
+  disabled: false,
+  getAttribute(name) {
+    if (name === 'type') return 'button';
+    return '';
+  },
+  scrollIntoView() {},
+  focus() {},
+  click() {
+    nativeClickCount += 1;
+  },
+  dispatchEvent(event) {
+    dispatchedEvents.push(event.type);
+    return true;
+  },
+  getBoundingClientRect() {
+    return { left: 12, top: 20, width: 220, height: 44 };
+  },
+};
+
+function PointerEvent(type, init = {}) {
+  this.type = type;
+  Object.assign(this, init);
+}
+function MouseEvent(type, init = {}) {
+  this.type = type;
+  Object.assign(this, init);
+}
+function KeyboardEvent(type, init = {}) {
+  this.type = type;
+  Object.assign(this, init);
+}
+
+const document = {
+  readyState: 'complete',
+  body: {},
+  querySelectorAll(selector) {
+    if (selector === 'button, a, [role="button"], [role="link"], input[type="button"], input[type="submit"]') {
+      return [phoneLoginButton];
+    }
+    return [];
+  },
+};
+
+const location = {
+  href: 'https://auth.openai.com/log-in',
+};
+
+${extractConst('LOGIN_SWITCH_TO_PHONE_PATTERN')}
+${extractConst('LOGIN_PHONE_ACTION_PATTERN')}
+${extractConst('LOGIN_EXTERNAL_IDP_PATTERN')}
+${extractConst('LOGIN_CODE_ONLY_ACTION_PATTERN')}
+${extractConst('LOGIN_MORE_OPTIONS_PATTERN')}
+
+function normalizeStep6Snapshot(snapshot) { return snapshot; }
+function isVisibleElement(el) { return Boolean(el); }
+function isActionEnabled(el) { return Boolean(el) && !el.disabled && el.getAttribute('aria-disabled') !== 'true'; }
+function getActionText(el) {
+  return [el?.textContent, el?.value, el?.getAttribute?.('aria-label'), el?.getAttribute?.('title')]
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\\s+/g, ' ')
+    .trim();
+}
+function log(message, level = 'info') { logs.push({ message, level }); }
+async function humanPause() {}
+function throwIfStopped() {}
+function simulateClick(target) {
+  clicks.push(getActionText(target));
+}
+async function sleep() {}
+function inspectLoginAuthState() {
+  return { state: 'email_page', phoneEntryTrigger: phoneLoginButton };
+}
+async function waitForPhoneLoginEntrySwitchTransition() {
+  return { state: 'phone_entry_page', phoneInput: { id: 'phone' } };
+}
+async function step6LoginFromPhonePage(payload, snapshot) {
+  return { branch: 'phone', payload, snapshot };
+}
+async function step6LoginFromPasswordPage() {
+  throw new Error('should not go to password');
+}
+async function finalizeStep6VerificationReady() {
+  throw new Error('should not finalize verification');
+}
+function createStep6OAuthConsentSuccessResult() {
+  throw new Error('should not go to oauth consent');
+}
+function createStep6AddEmailSuccessResult() {
+  throw new Error('should not go to add email');
+}
+async function createStep6LoginTimeoutRecoveryTransition() {
+  throw new Error('should not recover timeout');
+}
+function createStep6RecoverableResult(reason, snapshot, options = {}) {
+  return { step6Outcome: 'recoverable', reason, snapshot, ...options };
+}
+function getLoginAuthStateLabel(snapshot) {
+  return snapshot?.state || 'unknown';
+}
+
+${extractFunction('findLoginPhoneEntryTrigger')}
+${extractFunction('findLoginMoreOptionsTrigger')}
+${extractFunction('isDocumentReadyForAction')}
+${extractFunction('isElementConnectedToDocument')}
+${extractFunction('waitForStableButtonRect')}
+${extractFunction('waitForActionReady')}
+${extractFunction('clickActionWhenReady')}
+${extractFunction('waitForLoginPhoneEntryTriggerReady')}
+${extractFunction('dispatchActivationEvent')}
+${extractFunction('activateLoginPhoneEntryTrigger')}
+${extractFunction('switchFromEmailPageToPhoneLogin')}
+
+return {
+  async run() {
+    const result = await switchFromEmailPageToPhoneLogin({
+      phoneNumber: '+66812345678',
+      loginIdentifierType: 'phone',
+      visibleStep: 7,
+    }, {
+      state: 'email_page',
+      phoneEntryTrigger: null,
+      moreOptionsTrigger: null,
+    });
+    return { result, clicks, logs, nativeClickCount, dispatchedEvents };
+  },
+};
+`)();
+
+  const { result, clicks, logs, nativeClickCount, dispatchedEvents } = await api.run();
+
+  assert.deepEqual(clicks, []);
+  assert.equal(nativeClickCount, 1);
+  assert.ok(dispatchedEvents.includes('click'));
+  assert.ok(logs.some(({ message }) => /准备点击手机号登录按钮/.test(message)));
+  assert.ok(logs.some(({ message }) => /已执行手机号登录按钮点击/.test(message)));
+  assert.equal(result.branch, 'phone');
+});
+
+test('switchFromEmailPageToPhoneLogin still clicks matched phone button when document contains check fails', async () => {
+  const api = new Function(`
+const clicks = [];
+const logs = [];
+let now = 0;
+let nativeClickCount = 0;
+let containsChecks = 0;
+const phoneLoginButton = {
+  tagName: 'BUTTON',
+  textContent: '\\u4f7f\\u7528\\u7535\\u8bdd\\u53f7\\u7801\\u7ee7\\u7eed',
+  value: '',
+  disabled: false,
+  getAttribute(name) {
+    if (name === 'type') return 'button';
+    return '';
+  },
+  scrollIntoView() {},
+  focus() {},
+  click() {
+    nativeClickCount += 1;
+  },
+  dispatchEvent() {
+    return true;
+  },
+  getBoundingClientRect() {
+    return { left: 12, top: 20, width: 220, height: 44 };
+  },
+};
+
+function MouseEvent(type, init = {}) {
+  this.type = type;
+  Object.assign(this, init);
+}
+function KeyboardEvent(type, init = {}) {
+  this.type = type;
+  Object.assign(this, init);
+}
+
+const document = {
+  readyState: 'complete',
+  body: {
+    contains() {
+      containsChecks += 1;
+      return false;
+    },
+  },
+  querySelectorAll(selector) {
+    if (selector === 'button, a, [role="button"], [role="link"], input[type="button"], input[type="submit"]') {
+      return [phoneLoginButton];
+    }
+    return [];
+  },
+};
+
+const location = {
+  href: 'https://auth.openai.com/log-in',
+};
+
+const Date = {
+  now() {
+    return now;
+  },
+};
+
+${extractConst('LOGIN_SWITCH_TO_PHONE_PATTERN')}
+${extractConst('LOGIN_PHONE_ACTION_PATTERN')}
+${extractConst('LOGIN_EXTERNAL_IDP_PATTERN')}
+${extractConst('LOGIN_CODE_ONLY_ACTION_PATTERN')}
+${extractConst('LOGIN_MORE_OPTIONS_PATTERN')}
+
+function normalizeStep6Snapshot(snapshot) { return snapshot; }
+function isVisibleElement(el) { return Boolean(el); }
+function isActionEnabled(el) { return Boolean(el) && !el.disabled && el.getAttribute('aria-disabled') !== 'true'; }
+function getActionText(el) {
+  return [el?.textContent, el?.value, el?.getAttribute?.('aria-label'), el?.getAttribute?.('title')]
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\\s+/g, ' ')
+    .trim();
+}
+function log(message, level = 'info') { logs.push({ message, level }); }
+async function humanPause() {}
+function throwIfStopped() {}
+function simulateClick(target) {
+  clicks.push(getActionText(target));
+}
+async function sleep(ms = 0) {
+  now += ms || 1;
+}
+function inspectLoginAuthState() {
+  return { state: 'email_page', phoneEntryTrigger: findLoginPhoneEntryTrigger(), moreOptionsTrigger: null };
+}
+async function waitForPhoneLoginEntrySwitchTransition() {
+  return { state: 'phone_entry_page', phoneInput: { id: 'phone' } };
+}
+async function step6LoginFromPhonePage(payload, snapshot) {
+  return { branch: 'phone', payload, snapshot };
+}
+async function step6LoginFromPasswordPage() {
+  throw new Error('should not go to password');
+}
+async function finalizeStep6VerificationReady() {
+  throw new Error('should not finalize verification');
+}
+function createStep6OAuthConsentSuccessResult() {
+  throw new Error('should not go to oauth consent');
+}
+function createStep6AddEmailSuccessResult() {
+  throw new Error('should not go to add email');
+}
+async function createStep6LoginTimeoutRecoveryTransition() {
+  throw new Error('should not recover timeout');
+}
+function createStep6RecoverableResult(reason, snapshot, options = {}) {
+  return { step6Outcome: 'recoverable', reason, snapshot, ...options };
+}
+function getLoginAuthStateLabel(snapshot) {
+  return snapshot?.state || 'unknown';
+}
+
+${extractFunction('findLoginPhoneEntryTrigger')}
+${extractFunction('findLoginMoreOptionsTrigger')}
+${extractFunction('isDocumentReadyForAction')}
+${extractFunction('isElementConnectedToDocument')}
+${extractFunction('waitForStableButtonRect')}
+${extractFunction('waitForActionReady')}
+${extractFunction('clickActionWhenReady')}
+${extractFunction('waitForLoginPhoneEntryTriggerReady')}
+${extractFunction('dispatchActivationEvent')}
+${extractFunction('activateLoginPhoneEntryTrigger')}
+${extractFunction('switchFromEmailPageToPhoneLogin')}
+
+return {
+  async run() {
+    const result = await switchFromEmailPageToPhoneLogin({
+      phoneNumber: '+66812345678',
+      loginIdentifierType: 'phone',
+      visibleStep: 7,
+    }, {
+      state: 'email_page',
+      phoneEntryTrigger: null,
+      moreOptionsTrigger: null,
+    });
+    return { result, clicks, logs, nativeClickCount, containsChecks };
+  },
+};
+`)();
+
+  const { result, clicks, logs, nativeClickCount, containsChecks } = await api.run();
+
+  assert.equal(result.branch, 'phone');
+  assert.equal(nativeClickCount, 1);
+  assert.deepEqual(clicks, []);
+  assert.equal(containsChecks, 0);
+  assert.ok(logs.some(({ message }) => /已找到手机号登录按钮/.test(message)));
 });
 
 test('step 7 phone login continues directly when already on phone entry page', async () => {
@@ -264,6 +1253,133 @@ return {
 `)();
 
   assert.equal(api.staleVisibleButton(), false);
+});
+
+test('step 7 phone country selection resolves Chile from +56 phone number', () => {
+  const api = new Function(`
+const document = {};
+const chileOption = {
+  value: 'CL',
+  textContent: 'Chile',
+  label: 'Chile',
+};
+const thailandOption = {
+  value: 'TH',
+  textContent: 'Thailand',
+  label: 'Thailand',
+};
+const select = {
+  options: [thailandOption, chileOption],
+};
+
+function normalizePhoneDigits(value) {
+  return String(value || '').replace(/\\D+/g, '');
+}
+function extractDialCodeFromText(value) {
+  const match = String(value || '').match(/\\+\\s*(\\d{1,4})\\b/);
+  return String(match?.[1] || '').trim();
+}
+function getPageTextSnapshot() {
+  return '';
+}
+${extractFunction('normalizeSignupCountryLabel')}
+${extractFunction('getSignupCountryLabelAliases')}
+${extractFunction('getSignupPhoneCountryCandidateEntries')}
+${extractFunction('getSignupPhoneCountryCandidateLabels')}
+${extractFunction('getSignupCountryAliasesByDialCode')}
+${extractFunction('getSignupPhoneOptionLabel')}
+${extractFunction('normalizeSignupCountryOptionValue')}
+function getSignupRegionDisplayName(regionCode) {
+  if (regionCode === 'CL') return 'Chile';
+  if (regionCode === 'TH') return 'Thailand';
+  return '';
+}
+${extractFunction('getSignupPhoneCountryMatchLabels')}
+${extractFunction('resolveSignupPhoneDialCodeFromNumber')}
+${extractFunction('resolveSignupPhoneTargetDialCode')}
+function getSignupPhoneCountrySelect() {
+  return select;
+}
+${extractFunction('findSignupPhoneCountryOptionByPhoneNumber')}
+${extractFunction('getSignupPhoneCountryTargetLabels')}
+${extractFunction('doesSignupPhoneCountryTextMatchTarget')}
+
+return {
+  byNumber() {
+    return findSignupPhoneCountryOptionByPhoneNumber({}, '56946391679');
+  },
+  textMatch() {
+    return doesSignupPhoneCountryTextMatchTarget('Chile', null, {
+      phoneNumber: '56946391679',
+      countryLabel: '',
+    });
+  },
+};
+`)();
+
+  assert.equal(api.byNumber()?.value, 'CL');
+  assert.equal(api.textMatch(), true);
+});
+
+test('step 7 phone country selection can use HeroSMS selected fallback countries', () => {
+  const api = new Function(`
+const document = {};
+const chileOption = {
+  value: 'CL',
+  textContent: 'Chile',
+  label: 'Chile',
+};
+const thailandOption = {
+  value: 'TH',
+  textContent: 'Thailand',
+  label: 'Thailand',
+};
+const select = {
+  options: [thailandOption, chileOption],
+};
+
+function normalizePhoneDigits(value) {
+  return String(value || '').replace(/\\D+/g, '');
+}
+function extractDialCodeFromText(value) {
+  const match = String(value || '').match(/\\+\\s*(\\d{1,4})\\b/);
+  return String(match?.[1] || '').trim();
+}
+function getPageTextSnapshot() {
+  return '';
+}
+${extractFunction('normalizeSignupCountryLabel')}
+${extractFunction('getSignupCountryLabelAliases')}
+${extractFunction('getSignupCountryAliasesByDialCode')}
+${extractFunction('getSignupPhoneCountryCandidateEntries')}
+${extractFunction('getSignupPhoneCountryCandidateLabels')}
+${extractFunction('getSignupPhoneOptionLabel')}
+${extractFunction('normalizeSignupCountryOptionValue')}
+function getSignupRegionDisplayName(regionCode) {
+  if (regionCode === 'CL') return 'Chile';
+  if (regionCode === 'TH') return 'Thailand';
+  return '';
+}
+${extractFunction('getSignupPhoneCountryMatchLabels')}
+${extractFunction('resolveSignupPhoneDialCodeFromNumber')}
+function getSignupPhoneCountrySelect() {
+  return select;
+}
+${extractFunction('findSignupPhoneCountryOptionByPhoneNumber')}
+
+return {
+  byFallbackCountry() {
+    return findSignupPhoneCountryOptionByPhoneNumber({}, '56946391679', {
+      countryLabel: '',
+      heroSmsCountryId: 52,
+      heroSmsCountryLabel: 'Thailand',
+      heroSmsCountryFallback: [{ id: 'CL', label: 'Chile' }],
+    });
+  },
+};
+`)();
+
+  assert.equal(api.byFallbackCountry()?.value, 'CL');
 });
 
 test('step 7 phone login selects country before filling phone number', async () => {

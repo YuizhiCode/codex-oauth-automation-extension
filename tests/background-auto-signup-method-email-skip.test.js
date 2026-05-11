@@ -48,6 +48,7 @@ function extractFunction(name) {
 test('runAutoSequenceFromStep skips auto email fetch for phone signup mode', async () => {
   const bundle = [
     extractFunction('normalizeSignupMethod'),
+    extractFunction('canUsePhoneSignup'),
     extractFunction('resolveSignupMethod'),
     extractFunction('ensureResolvedSignupMethodForRun'),
     extractFunction('runAutoSequenceFromStep'),

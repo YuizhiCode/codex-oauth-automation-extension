@@ -436,6 +436,18 @@
           clearStopRequest();
           await clearAutoRunTimerAlarm();
           await resetState();
+          if (typeof broadcastDataUpdate === 'function') {
+            broadcastDataUpdate({
+              signupPhoneNumber: '',
+              signupPhoneActivation: null,
+              signupPhoneCompletedActivation: null,
+              signupPhoneVerificationRequestedAt: null,
+              signupPhoneVerificationPurpose: '',
+              currentPhoneVerificationCode: '',
+              accountIdentifierType: null,
+              accountIdentifier: '',
+            });
+          }
           await addLog('流程已重置', 'info');
           return { ok: true };
         }
@@ -1006,6 +1018,46 @@
           await setEmailState(message.payload.email);
           await resumeAutoRun();
           return { ok: true, email: message.payload.email };
+        }
+
+        case 'SET_SIGNUP_PHONE_STATE':
+        case 'SAVE_SIGNUP_PHONE': {
+          const state = await getState();
+          if (isAutoRunLockedState(state)) {
+            throw new Error('自动流程运行中，当前不能手动修改注册手机号。');
+          }
+          const phoneNumber = String(message.payload?.phoneNumber || '').trim();
+          const updates = phoneNumber
+            ? {
+              signupPhoneNumber: phoneNumber,
+              signupPhoneActivation: null,
+              signupPhoneCompletedActivation: null,
+              signupPhoneVerificationRequestedAt: null,
+              signupPhoneVerificationPurpose: '',
+              accountIdentifierType: 'phone',
+              accountIdentifier: phoneNumber,
+            }
+            : {
+              signupPhoneNumber: '',
+              signupPhoneActivation: null,
+              signupPhoneCompletedActivation: null,
+              signupPhoneVerificationRequestedAt: null,
+              signupPhoneVerificationPurpose: '',
+              ...(String(state?.accountIdentifierType || '').trim().toLowerCase() === 'phone'
+                ? {
+                  accountIdentifierType: null,
+                  accountIdentifier: '',
+                }
+                : {}),
+            };
+          await setState(updates);
+          if (typeof broadcastDataUpdate === 'function') {
+            broadcastDataUpdate(updates);
+          }
+          if (message.type === 'SAVE_SIGNUP_PHONE') {
+            await resumeAutoRun();
+          }
+          return { ok: true, phoneNumber };
         }
 
         case 'FETCH_GENERATED_EMAIL': {

@@ -84,6 +84,15 @@ const completeButton = {
   tagName: 'BUTTON',
   textContent: '完成帐户创建',
   hidden: false,
+  disabled: false,
+  getAttribute() {
+    return '';
+  },
+  scrollIntoView() {},
+  focus() {},
+  getBoundingClientRect() {
+    return { left: 12, top: 20, width: 220, height: 44 };
+  },
 };
 
 const birthdaySelects = {
@@ -93,6 +102,8 @@ const birthdaySelects = {
 };
 
 const document = {
+  readyState: 'complete',
+  body: {},
   querySelector(selector) {
     switch (selector) {
       case '[role="spinbutton"][data-type="year"]':
@@ -149,6 +160,12 @@ function isVisibleElement(el) {
   return Boolean(el) && !el.hidden;
 }
 
+function isActionEnabled(el) {
+  return Boolean(el) && !el.disabled && el.getAttribute?.('aria-disabled') !== 'true';
+}
+
+function throwIfStopped() {}
+
 async function setReactAriaBirthdaySelect(select, value) {
   selectedBirthday[select.label] = String(value).padStart(select.label === '年' ? 4 : 2, '0');
   if (selectedBirthday['年'] && selectedBirthday['月'] && selectedBirthday['天']) {
@@ -173,6 +190,11 @@ function reportComplete(step, payload) {
   }
 
   ${getStep5Bundle()}
+  ${extractFunction('isDocumentReadyForAction')}
+  ${extractFunction('isElementConnectedToDocument')}
+  ${extractFunction('waitForStableButtonRect')}
+  ${extractFunction('waitForActionReady')}
+  ${extractFunction('clickActionWhenReady')}
 
 return {
   async run(payload) {

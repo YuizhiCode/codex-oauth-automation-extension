@@ -6097,17 +6097,6 @@ function getRegisteredAccountMailProviderLabel(account = {}) {
   return MAIL_PROVIDER_LOGIN_CONFIGS[provider]?.label || provider || '未记录邮箱类型';
 }
 
-function formatRegisteredAccountPoolTime(value) {
-  const timestamp = Number(value) || 0;
-  if (!timestamp) {
-    return '';
-  }
-  return new Date(timestamp).toLocaleString('zh-CN', {
-    hour12: false,
-    timeZone: DISPLAY_TIMEZONE,
-  });
-}
-
 function isRegisteredAccountPoolInteractionLocked() {
   const statuses = getStepStatuses();
   const anyRunning = Object.values(statuses).some((status) => status === 'running');
@@ -6268,8 +6257,6 @@ function renderRegisteredAccountPool(state = latestState) {
     const email = String(account?.email || '').trim() || '(无邮箱)';
     const normalizedEmail = email.toLowerCase();
     const providerLabel = getRegisteredAccountMailProviderLabel(account);
-    const updatedAt = formatRegisteredAccountPoolTime(account?.updatedAt || account?.createdAt);
-    const timeText = updatedAt || '--';
     const checked = registeredAccountPoolSelectedEmails.has(normalizedEmail) ? 'checked' : '';
     const lockedAttr = isRegisteredAccountPoolInteractionLocked() ? 'disabled' : '';
     return `
@@ -6280,9 +6267,14 @@ function renderRegisteredAccountPool(state = latestState) {
             <span class="sr-only">选择</span>
           </label>
         </div>
-        <div class="registered-account-pool-cell registered-account-pool-col-email registered-account-pool-email" title="${escapeHtml(email)}">${escapeHtml(email)}</div>
+        <div
+          class="registered-account-pool-cell registered-account-pool-col-email registered-account-pool-email"
+          title="点击复制 ${escapeHtml(email)}"
+          role="button"
+          tabindex="0"
+          data-registered-account-copy="${escapeHtml(email)}"
+        >${escapeHtml(email)}</div>
         <div class="registered-account-pool-cell registered-account-pool-col-provider" title="${escapeHtml(providerLabel)}">${escapeHtml(providerLabel)}</div>
-        <div class="registered-account-pool-cell registered-account-pool-col-time mono" title="${escapeHtml(timeText)}">${escapeHtml(timeText)}</div>
         <div class="registered-account-pool-cell registered-account-pool-col-actions">
           <button
             type="button"
@@ -6295,6 +6287,16 @@ function renderRegisteredAccountPool(state = latestState) {
     `;
   }).join('');
   syncRegisteredAccountPoolSelectionState(state);
+}
+
+async function copyRegisteredAccountEmailFromPool(email) {
+  const normalizedEmail = String(email || '').trim();
+  if (!normalizedEmail || normalizedEmail === '(无邮箱)') {
+    throw new Error('未找到可复制的复用账号。');
+  }
+  await copyTextToClipboard(normalizedEmail);
+  showToast(`已复制复用账号 ${normalizedEmail}`, 'success', 1600);
+  return true;
 }
 
 async function deleteRegisteredAccountFromPool(email) {
@@ -8166,6 +8168,17 @@ btnReset.addEventListener('click', async () => {
     currentLuckmailPurchase: null,
     currentLuckmailMailCursor: null,
     email: null,
+    signupPhoneNumber: '',
+    signupPhoneActivation: null,
+    signupPhoneCompletedActivation: null,
+    signupPhoneVerificationRequestedAt: null,
+    signupPhoneVerificationPurpose: '',
+    ...(String(latestState?.accountIdentifierType || '').trim().toLowerCase() === 'phone'
+      ? {
+        accountIdentifierType: null,
+        accountIdentifier: '',
+      }
+      : {}),
   });
   syncAutoRunState({
     autoRunning: false,
@@ -8183,6 +8196,10 @@ btnReset.addEventListener('click', async () => {
   displayLocalhostUrl.textContent = '等待中...';
   displayLocalhostUrl.classList.remove('has-value');
   inputEmail.value = '';
+  if (inputSignupPhone) {
+    signupPhoneInputDirty = false;
+    inputSignupPhone.value = '';
+  }
   displayStatus.textContent = '就绪';
   statusBar.className = 'status-bar';
   logArea.innerHTML = '';
@@ -9603,6 +9620,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       chrome.runtime.sendMessage({ type: 'GET_STATE', source: 'sidepanel' }).then(state => {
         syncLatestState(state);
         syncAutoRunState(state);
+        syncSignupPhoneInputFromState(state);
         updateStatusDisplay(latestState);
         updateButtonStates();
         if (status === 'completed' || status === 'manual_completed' || status === 'skipped') {
@@ -9628,6 +9646,17 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         localhostUrl: null,
         email: null,
         password: null,
+        signupPhoneNumber: '',
+        signupPhoneActivation: null,
+        signupPhoneCompletedActivation: null,
+        signupPhoneVerificationRequestedAt: null,
+        signupPhoneVerificationPurpose: '',
+        ...(String(latestState?.accountIdentifierType || '').trim().toLowerCase() === 'phone'
+          ? {
+            accountIdentifierType: null,
+            accountIdentifier: '',
+          }
+          : {}),
         stepStatuses: STEP_DEFAULT_STATUSES,
         logs: [],
         scheduledAutoRunAt: null,
@@ -9640,6 +9669,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       displayLocalhostUrl.textContent = '等待中...';
       displayLocalhostUrl.classList.remove('has-value');
       inputEmail.value = '';
+      if (inputSignupPhone) {
+        signupPhoneInputDirty = false;
+        inputSignupPhone.value = '';
+      }
       displayStatus.textContent = '就绪';
       statusBar.className = 'status-bar';
       logArea.innerHTML = '';
@@ -9675,6 +9708,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       syncLatestState(message.payload);
       if (message.payload.email !== undefined) {
         inputEmail.value = message.payload.email || '';
+      }
+      if (
+        message.payload.signupPhoneNumber !== undefined
+        || message.payload.signupPhoneActivation !== undefined
+        || message.payload.signupPhoneCompletedActivation !== undefined
+        || message.payload.accountIdentifier !== undefined
+        || message.payload.accountIdentifierType !== undefined
+      ) {
+        syncSignupPhoneInputFromState(latestState);
       }
       if (
         message.payload.password !== undefined
@@ -10228,6 +10270,15 @@ registeredAccountPoolOverlay?.addEventListener('click', (event) => {
 });
 
 registeredAccountPoolList?.addEventListener('click', (event) => {
+  const copyTarget = event.target instanceof Element ? event.target.closest('[data-registered-account-copy]') : null;
+  if (copyTarget) {
+    const email = String(copyTarget.getAttribute('data-registered-account-copy') || '').trim();
+    copyRegisteredAccountEmailFromPool(email).catch((error) => {
+      showToast(`复制复用账号失败：${error?.message || error}`, 'error');
+    });
+    return;
+  }
+
   const target = event.target instanceof Element ? event.target.closest('[data-registered-account-delete]') : null;
   if (!target) {
     return;
@@ -10265,6 +10316,21 @@ registeredAccountPoolList?.addEventListener('change', (event) => {
     registeredAccountPoolSelectedEmails.delete(email);
   }
   syncRegisteredAccountPoolSelectionState(latestState);
+});
+
+registeredAccountPoolList?.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' && event.key !== ' ') {
+    return;
+  }
+  const copyTarget = event.target instanceof Element ? event.target.closest('[data-registered-account-copy]') : null;
+  if (!copyTarget) {
+    return;
+  }
+  event.preventDefault();
+  const email = String(copyTarget.getAttribute('data-registered-account-copy') || '').trim();
+  copyRegisteredAccountEmailFromPool(email).catch((error) => {
+    showToast(`复制复用账号失败：${error?.message || error}`, 'error');
+  });
 });
 
 // ============================================================

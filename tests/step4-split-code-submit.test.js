@@ -77,6 +77,11 @@ const submitBtn = {
   click() {
     submitClicked = true;
   },
+  scrollIntoView() {},
+  focus() {},
+  getBoundingClientRect() {
+    return { left: 12, top: 20, width: 220, height: 44 };
+  },
 };
 
 const inputs = Array.from({ length: 6 }, () => ({
@@ -93,6 +98,8 @@ const inputs = Array.from({ length: 6 }, () => ({
 }));
 
 const document = {
+  readyState: 'complete',
+  body: {},
   querySelector(selector) {
     if (selector === VERIFICATION_CODE_INPUT_SELECTOR) return inputs[0];
     return null;
@@ -134,6 +141,11 @@ ${extractFunction('waitForSplitVerificationInputsFilled')}
 ${extractFunction('isSignupProfilePageUrl')}
 ${extractFunction('isLikelyLoggedInChatgptHomeUrl')}
 ${extractFunction('getStep4PostVerificationState')}
+${extractFunction('isDocumentReadyForAction')}
+${extractFunction('isElementConnectedToDocument')}
+${extractFunction('waitForStableButtonRect')}
+${extractFunction('waitForActionReady')}
+${extractFunction('clickActionWhenReady')}
 ${extractFunction('fillVerificationCode')}
 
 return {

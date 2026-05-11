@@ -192,6 +192,9 @@ test('step 7 sends phone login identifier when signup mode is phone', async () =
     getLoginAuthStateLabel: (state) => state || 'unknown',
     getState: async () => ({
       signupMethod: 'phone',
+      heroSmsCountryId: 52,
+      heroSmsCountryLabel: 'Thailand',
+      heroSmsCountryFallback: [{ id: 16, label: 'United Kingdom' }],
       signupPhoneCompletedActivation: {
         phoneNumber: '+66812345678',
         countryId: 'thailand',
@@ -213,6 +216,9 @@ test('step 7 sends phone login identifier when signup mode is phone', async () =
 
   await executor.executeStep7({
     signupMethod: 'phone',
+    heroSmsCountryId: 52,
+    heroSmsCountryLabel: 'Thailand',
+    heroSmsCountryFallback: [{ id: 16, label: 'United Kingdom' }],
     signupPhoneCompletedActivation: {
       phoneNumber: '+66812345678',
       countryId: 'thailand',
@@ -228,6 +234,108 @@ test('step 7 sends phone login identifier when signup mode is phone', async () =
   assert.equal(sentMessages[0].payload.email, '');
   assert.equal(sentMessages[0].payload.countryId, 'thailand');
   assert.equal(sentMessages[0].payload.countryLabel, 'Thailand');
+  assert.equal(sentMessages[0].payload.heroSmsCountryId, 52);
+  assert.equal(sentMessages[0].payload.heroSmsCountryLabel, 'Thailand');
+  assert.deepStrictEqual(sentMessages[0].payload.heroSmsCountryFallback, [{ id: 16, label: 'United Kingdom' }]);
+});
+
+test('step 7 prefers phone signup state over stale email account identifier type', async () => {
+  const source = fs.readFileSync('background/steps/oauth-login.js', 'utf8');
+  const globalScope = {};
+  const api = new Function('self', `${source}; return self.MultiPageBackgroundStep7;`)(globalScope);
+
+  const sentMessages = [];
+
+  const executor = api.createStep7Executor({
+    addLog: async () => {},
+    completeStepFromBackground: async () => {},
+    getErrorMessage: (error) => error?.message || String(error || ''),
+    getLoginAuthStateLabel: (state) => state || 'unknown',
+    getState: async () => ({
+      accountIdentifierType: 'email',
+      accountIdentifier: 'stale@example.com',
+      signupMethod: 'phone',
+      signupPhoneNumber: '+66812345678',
+      password: 'secret',
+    }),
+    isStep6RecoverableResult: (result) => result?.step6Outcome === 'recoverable',
+    isStep6SuccessResult: (result) => result?.step6Outcome === 'success',
+    refreshOAuthUrlBeforeStep6: async () => 'https://oauth.example/latest',
+    reuseOrCreateTab: async () => {},
+    sendToContentScriptResilient: async (_source, message) => {
+      sentMessages.push(message);
+      return { step6Outcome: 'success' };
+    },
+    STEP6_MAX_ATTEMPTS: 3,
+    throwIfStopped: () => {},
+  });
+
+  await executor.executeStep7({
+    accountIdentifierType: 'email',
+    accountIdentifier: 'stale@example.com',
+    signupMethod: 'phone',
+    signupPhoneNumber: '+66812345678',
+    password: 'secret',
+  });
+
+  assert.equal(sentMessages.length, 1);
+  assert.equal(sentMessages[0].payload.loginIdentifierType, 'phone');
+  assert.equal(sentMessages[0].payload.phoneNumber, '+66812345678');
+  assert.equal(sentMessages[0].payload.accountIdentifier, '+66812345678');
+  assert.equal(sentMessages[0].payload.email, '');
+});
+
+test('step 7 keeps the oauth URL in phone signup mode so content clicks the phone option', async () => {
+  const source = fs.readFileSync('background/steps/oauth-login.js', 'utf8');
+  const globalScope = {};
+  const api = new Function('self', `${source}; return self.MultiPageBackgroundStep7;`)(globalScope);
+
+  const openedTabs = [];
+  const startedWindows = [];
+  const timeoutRequests = [];
+
+  const executor = api.createStep7Executor({
+    addLog: async () => {},
+    completeStepFromBackground: async () => {},
+    getErrorMessage: (error) => error?.message || String(error || ''),
+    getLoginAuthStateLabel: (state) => state || 'unknown',
+    getOAuthFlowStepTimeoutMs: async (defaultTimeoutMs, options) => {
+      timeoutRequests.push(options);
+      return defaultTimeoutMs;
+    },
+    getState: async () => ({
+      signupMethod: 'phone',
+      signupPhoneNumber: '+66812345678',
+      password: 'secret',
+    }),
+    isStep6RecoverableResult: (result) => result?.step6Outcome === 'recoverable',
+    isStep6SuccessResult: (result) => result?.step6Outcome === 'success',
+    refreshOAuthUrlBeforeStep6: async () => 'https://oauth.example/latest?client_id=codex',
+    reuseOrCreateTab: async (key, url, options) => {
+      openedTabs.push({ key, url, options });
+    },
+    sendToContentScriptResilient: async () => ({ step6Outcome: 'success' }),
+    startOAuthFlowTimeoutWindow: async (payload) => {
+      startedWindows.push(payload);
+    },
+    STEP6_MAX_ATTEMPTS: 3,
+    throwIfStopped: () => {},
+  });
+
+  await executor.executeStep7({
+    signupMethod: 'phone',
+    signupPhoneNumber: '+66812345678',
+    password: 'secret',
+  });
+
+  assert.equal(openedTabs.length, 1);
+  assert.equal(openedTabs[0].key, 'signup-page');
+  assert.equal(openedTabs[0].url, 'https://oauth.example/latest?client_id=codex');
+  assert.deepStrictEqual(openedTabs[0].options, { forceNew: true });
+  assert.deepStrictEqual(startedWindows, [
+    { step: 7, oauthUrl: 'https://oauth.example/latest?client_id=codex' },
+  ]);
+  assert.equal(timeoutRequests[0].oauthUrl, 'https://oauth.example/latest?client_id=codex');
 });
 
 test('step 7 forwards direct OAuth consent skip metadata when completing', async () => {

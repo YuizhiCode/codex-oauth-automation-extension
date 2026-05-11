@@ -73,6 +73,15 @@ const completeButton = {
   tagName: 'BUTTON',
   textContent: '\\u5b8c\\u6210\\u8d26\\u6237\\u521b\\u5efa',
   hidden: false,
+  disabled: false,
+  getAttribute() {
+    return '';
+  },
+  scrollIntoView() {},
+  focus() {},
+  getBoundingClientRect() {
+    return { left: 12, top: 20, width: 220, height: 44 };
+  },
 };
 const allConsentLabel = {
   hidden: false,
@@ -101,6 +110,8 @@ const allConsentCheckbox = {
 };
 
 const document = {
+  readyState: 'complete',
+  body: {},
   querySelector(selector) {
     switch (selector) {
       case '[role="spinbutton"][data-type="year"]':
@@ -155,6 +166,12 @@ function isVisibleElement(el) {
   return Boolean(el) && !el.hidden;
 }
 
+function isActionEnabled(el) {
+  return Boolean(el) && !el.disabled && el.getAttribute?.('aria-disabled') !== 'true';
+}
+
+function throwIfStopped() {}
+
 async function setReactAriaBirthdaySelect() {
   throw new Error('setReactAriaBirthdaySelect should not run in age-mode test');
 }
@@ -179,6 +196,11 @@ function normalizeInlineText(text) {
 }
 
 ${getStep5Bundle()}
+${extractFunction('isDocumentReadyForAction')}
+${extractFunction('isElementConnectedToDocument')}
+${extractFunction('waitForStableButtonRect')}
+${extractFunction('waitForActionReady')}
+${extractFunction('clickActionWhenReady')}
 
 return {
   async run(payload) {

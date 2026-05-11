@@ -22,6 +22,9 @@ test('registered account pool renders delete action for each reusable account', 
   assert.match(html, /id="btn-registered-account-pool-next"/);
   assert.match(source, /data-registered-account-delete=/);
   assert.match(source, /data-registered-account-select=/);
+  assert.match(source, /data-registered-account-copy=/);
+  assert.match(source, /copyRegisteredAccountEmailFromPool\(/);
+  assert.match(source, /已复制复用账号/);
   assert.match(source, /删除<\/button>/);
   assert.match(source, /function isRegisteredAccountPoolInteractionLocked\(/);
   assert.match(source, /function normalizeRegisteredAccountPoolPageSize\(/);
@@ -30,4 +33,7 @@ test('registered account pool renders delete action for each reusable account', 
   assert.match(source, /function closeRegisteredAccountPoolPanel\(/);
   assert.match(source, /function deleteRegisteredAccountFromPool\(/);
   assert.match(source, /function deleteSelectedRegisteredAccounts\(/);
+  assert.doesNotMatch(source, /registered-account-pool-col-time/);
+  assert.doesNotMatch(source, /formatRegisteredAccountPoolTime/);
+  assert.doesNotMatch(source, /const\s+timeText\s*=/);
 });

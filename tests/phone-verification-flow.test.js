@@ -55,6 +55,7 @@ test('phone verification helper exports signup-phone flow helpers', () => {
 
 test('signup phone helper clears stale phone state when activation record is missing', async () => {
   const logs = [];
+  const broadcasts = [];
   let currentState = {
     signupPhoneNumber: '66959916439',
     signupPhoneActivation: null,
@@ -74,6 +75,9 @@ test('signup phone helper clears stale phone state when activation record is mis
       throw new Error('network should not be used without an activation');
     },
     getState: async () => currentState,
+    broadcastDataUpdate: (updates) => {
+      broadcasts.push(updates);
+    },
     sendToContentScriptResilient: async () => {
       throw new Error('content script should not be used without an activation');
     },
@@ -95,7 +99,71 @@ test('signup phone helper clears stale phone state when activation record is mis
   assert.equal(currentState.signupPhoneVerificationPurpose, '');
   assert.equal(currentState.currentPhoneVerificationCode, '');
   assert.equal(currentState.accountIdentifier, '');
+  assert.deepStrictEqual(broadcasts.at(-1), {
+    signupPhoneNumber: '',
+    signupPhoneActivation: null,
+    signupPhoneCompletedActivation: null,
+    signupPhoneVerificationRequestedAt: null,
+    signupPhoneVerificationPurpose: '',
+    currentPhoneVerificationCode: '',
+    accountIdentifier: '',
+    accountIdentifierType: null,
+  });
   assert.equal(logs.some((entry) => /重新执行步骤 2 时将重新获取手机号/.test(entry.message)), true);
+});
+
+test('signup phone helper broadcasts the acquired registration phone number', async () => {
+  const broadcasts = [];
+  let currentState = {
+    heroSmsApiKey: 'demo-key',
+    heroSmsCountryId: 52,
+    heroSmsCountryLabel: 'Thailand',
+  };
+
+  const helpers = api.createPhoneVerificationHelpers({
+    addLog: async () => {},
+    broadcastDataUpdate: (updates) => {
+      broadcasts.push(updates);
+    },
+    ensureStep8SignupPageReady: async () => {},
+    fetchImpl: async (url) => {
+      const parsedUrl = new URL(url);
+      const action = parsedUrl.searchParams.get('action');
+      if (action === 'serviceCountRent') {
+        return {
+          ok: true,
+          text: async () => buildHeroSmsPricesPayload(),
+        };
+      }
+      if (action === 'getNumber') {
+        return {
+          ok: true,
+          text: async () => 'ACCESS_NUMBER:123456:66959916439',
+        };
+      }
+      throw new Error(`Unexpected HeroSMS action: ${action}`);
+    },
+    getState: async () => currentState,
+    sendToContentScriptResilient: async () => ({}),
+    setState: async (updates) => {
+      currentState = { ...currentState, ...updates };
+    },
+    sleepWithStop: async () => {},
+    throwIfStopped: () => {},
+  });
+
+  const activation = await helpers.prepareSignupPhoneActivation(currentState);
+
+  assert.equal(activation.phoneNumber, '66959916439');
+  assert.equal(currentState.signupPhoneNumber, '66959916439');
+  assert.deepStrictEqual(broadcasts.at(-1), {
+    signupPhoneNumber: '66959916439',
+    signupPhoneActivation: activation,
+    signupPhoneVerificationRequestedAt: null,
+    signupPhoneVerificationPurpose: 'signup',
+    accountIdentifierType: 'phone',
+    accountIdentifier: '66959916439',
+  });
 });
 
 test('phone verification helper requests a 5sim number with configured country/operator/product', async () => {
@@ -335,6 +403,76 @@ test('signup phone helper uses timeout windows, page resend, and step 4 submit p
   assert.equal(currentState.signupPhoneVerificationPurpose, '');
   assert.equal(currentState.currentPhoneVerificationCode, '');
   assert.equal(logs.some((entry) => /准备请求重发/.test(entry.message)), true);
+});
+
+test('signup phone helper clears auto-acquired phone identity after timeout so step 2 reacquires a number', async () => {
+  const statusActions = [];
+  let currentState = {
+    heroSmsApiKey: 'demo-key',
+    phoneCodeWaitSeconds: 15,
+    phoneCodeTimeoutWindows: 1,
+    phoneCodePollIntervalSeconds: 1,
+    phoneCodePollMaxRounds: 1,
+    signupPhoneNumber: '66959916439',
+    signupPhoneVerificationPurpose: 'signup',
+    signupPhoneActivation: {
+      activationId: 'signup-timeout-123',
+      phoneNumber: '66959916439',
+      provider: 'hero-sms',
+      serviceCode: 'dr',
+      countryId: 52,
+      successfulUses: 0,
+      maxUses: 3,
+    },
+    accountIdentifierType: 'phone',
+    accountIdentifier: '66959916439',
+  };
+
+  const helpers = api.createPhoneVerificationHelpers({
+    addLog: async () => {},
+    ensureStep8SignupPageReady: async () => {},
+    fetchImpl: async (url) => {
+      const parsedUrl = new URL(url);
+      const action = parsedUrl.searchParams.get('action');
+      if (action === 'getStatus') {
+        return {
+          ok: true,
+          text: async () => 'STATUS_WAIT_CODE',
+        };
+      }
+      if (action === 'setStatus') {
+        statusActions.push(parsedUrl.searchParams.get('status'));
+        return {
+          ok: true,
+          text: async () => 'STATUS_UPDATED',
+        };
+      }
+      throw new Error(`Unexpected HeroSMS action: ${action}`);
+    },
+    getOAuthFlowStepTimeoutMs: async (fallback) => fallback,
+    getState: async () => currentState,
+    sendToContentScriptResilient: async (_source, message) => {
+      throw new Error(`Unexpected content-script message: ${message.type}`);
+    },
+    setState: async (updates) => {
+      currentState = { ...currentState, ...updates };
+    },
+    sleepWithStop: async () => {},
+    throwIfStopped: () => {},
+  });
+
+  await assert.rejects(
+    () => helpers.completeSignupPhoneVerificationFlow(77, { state: currentState }),
+    /Timed out waiting for the phone verification code\. Last HeroSMS status: STATUS_WAIT_CODE/
+  );
+
+  assert.deepStrictEqual(statusActions, ['8']);
+  assert.equal(currentState.signupPhoneActivation, null);
+  assert.equal(currentState.signupPhoneNumber, '');
+  assert.equal(currentState.signupPhoneVerificationPurpose, '');
+  assert.equal(currentState.currentPhoneVerificationCode, '');
+  assert.equal(currentState.accountIdentifierType, null);
+  assert.equal(currentState.accountIdentifier, '');
 });
 
 test('phone verification helper acquires a number from 5sim with fallback countries', async () => {
@@ -821,6 +959,7 @@ test('phone verification helper requests HeroSMS numbers with fixed OpenAI and T
     provider: 'hero-sms',
     serviceCode: 'dr',
     countryId: 52,
+    countryLabel: 'Thailand',
     successfulUses: 0,
     maxUses: 3,
   });
@@ -1286,6 +1425,7 @@ test('phone verification helper uses HeroSMS getStatus after acquiring a number'
         provider: 'hero-sms',
         serviceCode: 'dr',
         countryId: 16,
+        countryLabel: 'United Kingdom',
         successfulUses: 0,
         maxUses: 3,
       },
@@ -1301,6 +1441,7 @@ test('phone verification helper uses HeroSMS getStatus after acquiring a number'
         provider: 'hero-sms',
         serviceCode: 'dr',
         countryId: 16,
+        countryLabel: 'United Kingdom',
         successfulUses: 1,
         maxUses: 3,
       },
@@ -1364,6 +1505,7 @@ test('phone verification helper refreshes maxPrice when HeroSMS returns WRONG_MA
     provider: 'hero-sms',
     serviceCode: 'dr',
     countryId: 52,
+    countryLabel: 'Thailand',
     successfulUses: 0,
     maxUses: 3,
   });
@@ -1729,6 +1871,7 @@ test('phone verification helper falls back to plain getNumber when priced reques
     provider: 'hero-sms',
     serviceCode: 'dr',
     countryId: 52,
+    countryLabel: 'Thailand',
     successfulUses: 0,
     maxUses: 3,
   });
@@ -1833,6 +1976,7 @@ test('phone verification helper completes add-phone flow, clears current activat
         provider: 'hero-sms',
         serviceCode: 'dr',
         countryId: 52,
+        countryLabel: 'Thailand',
         successfulUses: 0,
         maxUses: 3,
       },
@@ -1848,6 +1992,7 @@ test('phone verification helper completes add-phone flow, clears current activat
         provider: 'hero-sms',
         serviceCode: 'dr',
         countryId: 52,
+        countryLabel: 'Thailand',
         successfulUses: 1,
         maxUses: 3,
       },
@@ -2451,6 +2596,7 @@ test('phone verification helper reuses the current number first when code submis
     provider: 'hero-sms',
     serviceCode: 'dr',
     countryId: 52,
+    countryLabel: 'Thailand',
     successfulUses: 1,
     maxUses: 3,
   });

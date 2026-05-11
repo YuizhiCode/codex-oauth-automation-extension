@@ -2320,6 +2320,18 @@ async function removeCurrentRegisteredAccountAfterPlatformSuccess(stateOverride 
 
 async function prepareRegisteredAccountResumeForAutoRun(context = {}) {
   const state = await getState();
+  const signupMethod = typeof resolveSignupMethod === 'function'
+    ? resolveSignupMethod(state)
+    : String(state?.resolvedSignupMethod || state?.signupMethod || '').trim().toLowerCase();
+  if (
+    signupMethod === 'phone'
+    || String(state?.accountIdentifierType || '').trim().toLowerCase() === 'phone'
+    || Boolean(String(state?.signupPhoneNumber || '').trim())
+  ) {
+    await addLog('自动运行：当前为手机号注册模式，已跳过复用账号池恢复。', 'info');
+    return null;
+  }
+
   const accounts = normalizeRegisteredAccountPool(state.accounts);
   const account = accounts[0] || null;
   if (!account) {
@@ -6099,10 +6111,26 @@ async function finalizeIcloudAliasAfterSuccessfulFlow(state) {
 }
 
 async function finalizePhoneActivationAfterSuccessfulFlow(state) {
-  if (typeof phoneVerificationHelpers?.finalizePendingPhoneActivationConfirmation !== 'function') {
-    return null;
+  let result = null;
+  if (typeof phoneVerificationHelpers?.finalizePendingPhoneActivationConfirmation === 'function') {
+    result = await phoneVerificationHelpers.finalizePendingPhoneActivationConfirmation(state);
   }
-  return phoneVerificationHelpers.finalizePendingPhoneActivationConfirmation(state);
+  const latestState = await getState();
+  const updates = {
+    signupPhoneNumber: '',
+    signupPhoneActivation: null,
+    signupPhoneCompletedActivation: null,
+    signupPhoneVerificationRequestedAt: null,
+    signupPhoneVerificationPurpose: '',
+    currentPhoneVerificationCode: '',
+  };
+  if (String(latestState?.accountIdentifierType || '').trim().toLowerCase() === 'phone') {
+    updates.accountIdentifierType = null;
+    updates.accountIdentifier = '';
+  }
+  await setState(updates);
+  broadcastDataUpdate(updates);
+  return result;
 }
 
 // ============================================================
@@ -9133,7 +9161,15 @@ async function runAutoSequenceFromStep(startStep, context = {}) {
   }
 
   if (currentStartStep <= 2) {
-    await ensureAutoEmailReady(targetRun, totalRuns, attemptRuns);
+    const phoneSignupMethod = typeof SIGNUP_METHOD_PHONE !== 'undefined' ? SIGNUP_METHOD_PHONE : 'phone';
+    const resolvedSignupMethod = typeof ensureResolvedSignupMethodForRun === 'function'
+      ? await ensureResolvedSignupMethodForRun()
+      : 'email';
+    if (resolvedSignupMethod === phoneSignupMethod) {
+      await addLog(`=== 目标 ${targetRun}/${totalRuns} 轮：本轮注册方式为手机号注册，将跳过邮箱预获取 ===`, 'info');
+    } else {
+      await ensureAutoEmailReady(targetRun, totalRuns, attemptRuns);
+    }
     await executeStepAndWait(2, AUTO_STEP_DELAYS[2]);
   }
 
@@ -9449,6 +9485,7 @@ const verificationFlowHelpers = self.MultiPageBackgroundVerificationFlow?.create
 });
 const phoneVerificationHelpers = self.MultiPageBackgroundPhoneVerification?.createPhoneVerificationHelpers({
   addLog,
+  broadcastDataUpdate,
   DEFAULT_FIVE_SIM_BASE_URL,
   DEFAULT_FIVE_SIM_COUNTRY_ORDER,
   DEFAULT_FIVE_SIM_OPERATOR,

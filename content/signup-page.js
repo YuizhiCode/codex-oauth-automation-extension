@@ -188,6 +188,334 @@ function isActionEnabled(el) {
     && el.getAttribute('aria-disabled') !== 'true';
 }
 
+function isDocumentReadyForAction() {
+  const readyState = String(document?.readyState || 'complete').toLowerCase();
+  return readyState === 'complete' && Boolean(document?.body || document?.documentElement);
+}
+
+function isElementConnectedToDocument(el) {
+  if (!el) return false;
+  if (el.isConnected === false) return false;
+  if (document?.body && typeof document.body.contains === 'function') {
+    return document.body.contains(el);
+  }
+  return true;
+}
+
+async function waitForDocumentActionReady(timeout = 8000, pollInterval = 100) {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    throwIfStopped();
+    if (isDocumentReadyForAction()) {
+      await sleep(pollInterval);
+      return true;
+    }
+    await sleep(pollInterval);
+  }
+  return isDocumentReadyForAction();
+}
+
+async function waitForActionReady(resolveAction, options = {}) {
+  const {
+    timeout = 8000,
+    pollInterval = 120,
+    stableRectTimeout = 1200,
+    requireDocumentReady = true,
+    requirePageIdle = true,
+    pageStableMs = 700,
+    minUrlStableMs = 350,
+  } = options;
+  const start = Date.now();
+  let action = null;
+  let observedUrl = location.href;
+  let urlStableSince = start;
+  let pageIdleSince = start;
+  let pageStableSamples = 0;
+  let attempts = 0;
+  let wasPageBusy = false;
+  const maxAttempts = Math.max(1, Math.ceil(timeout / Math.max(20, pollInterval)) + 5);
+
+  function getVisibleBusyIndicators() {
+    if (!requirePageIdle || typeof document?.querySelectorAll !== 'function') {
+      return [];
+    }
+
+    const selectors = [
+      '[aria-busy="true"]',
+      '[role="progressbar"]',
+      '[data-loading="true"]',
+      '[data-state="loading"]',
+      '[data-testid*="loading" i]',
+      '[data-testid*="spinner" i]',
+      '[aria-label*="loading" i]',
+      '[aria-label*="加载"]',
+      '[aria-label*="请稍候"]',
+      '[class*="loading" i]',
+      '[class*="spinner" i]',
+      '[class*="loader" i]',
+      '[class*="progress" i]',
+      '[class*="skeleton" i]',
+      'svg[class*="animate-spin" i]',
+    ].join(', ');
+
+    try {
+      return Array.from(document.querySelectorAll(selectors))
+        .filter((el) => isElementConnectedToDocument(el) && isVisibleElement(el));
+    } catch {
+      return [];
+    }
+  }
+
+  function isPageReadyForClick() {
+    if (requireDocumentReady && !isDocumentReadyForAction()) {
+      pageStableSamples = 0;
+      return false;
+    }
+
+    const now = Date.now();
+    const currentUrl = location.href;
+    if (currentUrl !== observedUrl) {
+      observedUrl = currentUrl;
+      urlStableSince = now;
+      pageIdleSince = now;
+      pageStableSamples = 0;
+      return false;
+    }
+
+    const busyIndicators = getVisibleBusyIndicators();
+    if (busyIndicators.length > 0) {
+      wasPageBusy = true;
+      pageIdleSince = now;
+      pageStableSamples = 0;
+      return false;
+    }
+
+    if (wasPageBusy) {
+      wasPageBusy = false;
+      pageIdleSince = now;
+      pageStableSamples = 0;
+    }
+
+    pageStableSamples += 1;
+    const urlStable = minUrlStableMs <= 0
+      || now - urlStableSince >= minUrlStableMs
+      || pageStableSamples >= 3;
+    const pageStable = pageStableMs <= 0
+      || now - pageIdleSince >= pageStableMs
+      || pageStableSamples >= 3;
+
+    return urlStable && pageStable;
+  }
+
+  while (Date.now() - start < timeout && attempts < maxAttempts) {
+    attempts += 1;
+    throwIfStopped();
+
+    if (isPageReadyForClick()) {
+      action = typeof resolveAction === 'function' ? resolveAction() : resolveAction;
+      if (
+        action
+        && isElementConnectedToDocument(action)
+        && isVisibleElement(action)
+        && isActionEnabled(action)
+      ) {
+        action.scrollIntoView?.({ behavior: 'auto', block: 'center' });
+        action.focus?.();
+        if (stableRectTimeout > 0) {
+          await waitForStableButtonRect(action, stableRectTimeout);
+        }
+        if (
+          isElementConnectedToDocument(action)
+          && isVisibleElement(action)
+          && isActionEnabled(action)
+        ) {
+          return action;
+        }
+      }
+    }
+
+    await sleep(pollInterval);
+  }
+
+  return null;
+}
+
+async function clickActionWhenReady(resolveAction, options = {}) {
+  const action = await waitForActionReady(resolveAction, options);
+  if (!action) {
+    return null;
+  }
+  simulateClick(action);
+  return action;
+}
+
+function dispatchActivationEvent(target, EventCtor, type, init = {}) {
+  if (!target || typeof target.dispatchEvent !== 'function' || typeof EventCtor !== 'function') {
+    return false;
+  }
+  try {
+    const eventInit = {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      ...init,
+    };
+    if (typeof window !== 'undefined') {
+      eventInit.view = window;
+    }
+    return target.dispatchEvent(new EventCtor(type, eventInit));
+  } catch {
+    return false;
+  }
+}
+
+async function activateLoginPhoneEntryTrigger(target, options = {}) {
+  const {
+    visibleStep = 7,
+    label = getActionText(target).slice(0, 80),
+  } = options;
+  if (!target) {
+    return false;
+  }
+
+  const rect = target.getBoundingClientRect?.();
+  const centerX = rect ? rect.left + (rect.width / 2) : undefined;
+  const centerY = rect ? rect.top + (rect.height / 2) : undefined;
+  const tag = String(target.tagName || '').toLowerCase() || 'unknown';
+  const role = String(target.getAttribute?.('role') || '').trim();
+  const href = String(target.getAttribute?.('href') || '').trim();
+
+  log(
+    `步骤 ${visibleStep}：准备点击手机号登录按钮 "${label}"，元素=${tag}${role ? ` role=${role}` : ''}${href ? ` href=${href}` : ''}，rect=${rect ? JSON.stringify({ left: rect.left, top: rect.top, width: rect.width, height: rect.height }) : 'none'}`,
+    'info',
+    { step: visibleStep, stepKey: 'oauth-login' }
+  );
+
+  try {
+    target.scrollIntoView?.({ behavior: 'auto', block: 'center', inline: 'center' });
+  } catch {}
+  try {
+    target.focus?.();
+  } catch {}
+  await sleep(80);
+
+  const pointerInit = {
+    pointerId: 1,
+    pointerType: 'mouse',
+    isPrimary: true,
+    button: 0,
+    buttons: 1,
+    clientX: centerX,
+    clientY: centerY,
+  };
+  const mouseInit = {
+    button: 0,
+    buttons: 1,
+    clientX: centerX,
+    clientY: centerY,
+  };
+
+  const dispatched = [];
+  if (dispatchActivationEvent(target, typeof PointerEvent !== 'undefined' ? PointerEvent : null, 'pointerover', pointerInit)) dispatched.push('pointerover');
+  if (dispatchActivationEvent(target, typeof PointerEvent !== 'undefined' ? PointerEvent : null, 'pointerenter', pointerInit)) dispatched.push('pointerenter');
+  if (dispatchActivationEvent(target, typeof MouseEvent !== 'undefined' ? MouseEvent : null, 'mouseover', mouseInit)) dispatched.push('mouseover');
+  if (dispatchActivationEvent(target, typeof MouseEvent !== 'undefined' ? MouseEvent : null, 'mouseenter', mouseInit)) dispatched.push('mouseenter');
+  if (dispatchActivationEvent(target, typeof PointerEvent !== 'undefined' ? PointerEvent : null, 'pointerdown', pointerInit)) dispatched.push('pointerdown');
+  if (dispatchActivationEvent(target, typeof MouseEvent !== 'undefined' ? MouseEvent : null, 'mousedown', mouseInit)) dispatched.push('mousedown');
+
+  let nativeClicked = false;
+  if (typeof target.click === 'function') {
+    try {
+      target.click();
+      nativeClicked = true;
+    } catch {}
+  }
+
+  if (dispatchActivationEvent(target, typeof PointerEvent !== 'undefined' ? PointerEvent : null, 'pointerup', { ...pointerInit, buttons: 0 })) dispatched.push('pointerup');
+  if (dispatchActivationEvent(target, typeof MouseEvent !== 'undefined' ? MouseEvent : null, 'mouseup', { ...mouseInit, buttons: 0 })) dispatched.push('mouseup');
+  if (dispatchActivationEvent(target, typeof MouseEvent !== 'undefined' ? MouseEvent : null, 'click', { ...mouseInit, buttons: 0 })) dispatched.push('click');
+  if (dispatchActivationEvent(target, typeof KeyboardEvent !== 'undefined' ? KeyboardEvent : null, 'keydown', { key: 'Enter', code: 'Enter' })) dispatched.push('keydown:Enter');
+  if (dispatchActivationEvent(target, typeof KeyboardEvent !== 'undefined' ? KeyboardEvent : null, 'keyup', { key: 'Enter', code: 'Enter' })) dispatched.push('keyup:Enter');
+
+  if (!nativeClicked && dispatched.length === 0) {
+    simulateClick(target);
+  }
+
+  log(
+    `步骤 ${visibleStep}：已执行手机号登录按钮点击 "${label}"，nativeClick=${nativeClicked}，events=${dispatched.join(',') || 'none'}`,
+    'info',
+    { step: visibleStep, stepKey: 'oauth-login' }
+  );
+
+  return true;
+}
+
+async function waitForLoginPhoneEntryTriggerReady(resolveTrigger, options = {}) {
+  const {
+    timeout = 10000,
+    pollInterval = 120,
+    stableRectTimeout = 1200,
+    visibleStep = 7,
+  } = options;
+  const start = Date.now();
+  let trigger = null;
+  let loggedDocumentLoading = false;
+  let loggedFound = false;
+  let loggedDisabled = false;
+
+  while (Date.now() - start < timeout) {
+    throwIfStopped();
+
+    if (!isDocumentReadyForAction()) {
+      if (!loggedDocumentLoading) {
+        loggedDocumentLoading = true;
+        log(`步骤 ${visibleStep}：页面仍在加载，暂不点击手机号登录按钮。`, 'info', {
+          step: visibleStep,
+          stepKey: 'oauth-login',
+        });
+      }
+      await sleep(pollInterval);
+      continue;
+    }
+
+    trigger = typeof resolveTrigger === 'function' ? resolveTrigger() : resolveTrigger;
+    if (trigger && isVisibleElement(trigger)) {
+      const label = getActionText(trigger).slice(0, 80);
+      if (isActionEnabled(trigger)) {
+        if (!loggedFound) {
+          loggedFound = true;
+          log(`步骤 ${visibleStep}：已找到手机号登录按钮 "${label}"，准备跳出等待并点击。`, 'info', {
+            step: visibleStep,
+            stepKey: 'oauth-login',
+          });
+        }
+        try {
+          trigger.scrollIntoView?.({ behavior: 'auto', block: 'center', inline: 'center' });
+        } catch {}
+        try {
+          trigger.focus?.();
+        } catch {}
+        if (stableRectTimeout > 0) {
+          await waitForStableButtonRect(trigger, stableRectTimeout);
+        }
+        if (isVisibleElement(trigger) && isActionEnabled(trigger)) {
+          return trigger;
+        }
+      } else if (!loggedDisabled) {
+        loggedDisabled = true;
+        log(`步骤 ${visibleStep}：已识别手机号登录按钮 "${label}"，但当前仍不可点击，继续等待页面稳定。`, 'info', {
+          step: visibleStep,
+          stepKey: 'oauth-login',
+        });
+      }
+    }
+
+    await sleep(pollInterval);
+  }
+
+  return null;
+}
+
 function findOneTimeCodeLoginTrigger() {
   const candidates = document.querySelectorAll(
     'button, a, [role="button"], [role="link"], input[type="button"], input[type="submit"]'
@@ -341,7 +669,7 @@ const SIGNUP_SWITCH_TO_EMAIL_PATTERN = new RegExp([
   String.raw`use\s+(?:an?\s+)?email(?:\s+address)?(?:\s+instead)?`,
   String.raw`sign\s*(?:in|up)\s+with\s+email`,
 ].join('|'), 'i');
-const SIGNUP_SWITCH_ACTION_PATTERN = /\u7ee7\u7eed\u4f7f\u7528|\u6539\u7528|continue|use|sign\s*(?:in|up)/i;
+const SIGNUP_SWITCH_ACTION_PATTERN = /\u7ee7\u7eed\u4f7f\u7528|\u6539\u7528|\u7ee7\u7eed|\u6ce8\u518c|continue|use|register|create|sign\s*(?:in|up)/i;
 const SIGNUP_EMAIL_ACTION_PATTERN = /\u7535\u5b50\u90ae\u4ef6|\u90ae\u7bb1|email/i;
 const SIGNUP_PHONE_ACTION_PATTERN = /手机|手机号|电话号码|phone|telephone|mobile/i;
 const SIGNUP_SWITCH_TO_PHONE_PATTERN = new RegExp([
@@ -354,26 +682,59 @@ const SIGNUP_SWITCH_TO_PHONE_PATTERN = new RegExp([
 const SIGNUP_MORE_OPTIONS_PATTERN = /更多选项|其它方式|其他方式|more\s+options|show\s+more|other\s+(?:options|ways)/i;
 const SIGNUP_WORK_EMAIL_PATTERN = /\u5de5\u4f5c|business|work\s+email/i;
 
+function getSignupInputHints(el) {
+  const type = String(el?.getAttribute?.('type') || '').trim().toLowerCase();
+  const name = String(el?.getAttribute?.('name') || '').trim().toLowerCase();
+  const id = String(el?.getAttribute?.('id') || '').trim().toLowerCase();
+  const placeholder = String(el?.getAttribute?.('placeholder') || '').trim();
+  const ariaLabel = String(el?.getAttribute?.('aria-label') || '').trim();
+  const autocomplete = String(el?.getAttribute?.('autocomplete') || '').trim().toLowerCase();
+  return {
+    type,
+    name,
+    id,
+    placeholder,
+    ariaLabel,
+    autocomplete,
+    nameIdText: `${name} ${id}`,
+    labelText: `${placeholder} ${ariaLabel}`,
+  };
+}
+
+function isExplicitSignupEmailInput(el) {
+  const hints = getSignupInputHints(el);
+  return hints.type === 'email'
+    || hints.autocomplete === 'email'
+    || /email/i.test(hints.nameIdText)
+    || /email|电子邮件|邮箱/i.test(hints.labelText);
+}
+
+function isGenericSignupUsernameInput(el) {
+  const hints = getSignupInputHints(el);
+  return hints.autocomplete === 'username'
+    || /username/i.test(hints.nameIdText);
+}
+
+function isLikelySignupPhoneInput(el) {
+  const hints = getSignupInputHints(el);
+  return hints.type === 'tel'
+    || hints.autocomplete === 'tel'
+    || /phone|tel/i.test(hints.nameIdText)
+    || /手机|电话|手机号|电话号码|phone|mobile|telephone/i.test(hints.labelText);
+}
+
 function getSignupEmailInput() {
   const input = document.querySelector(SIGNUP_EMAIL_INPUT_SELECTOR);
-  if (input && isVisibleElement(input)) {
+  if (input && isVisibleElement(input) && (isExplicitSignupEmailInput(input) || !isLikelySignupPhoneInput(input))) {
     return input;
   }
 
   const fallback = Array.from(document.querySelectorAll('input')).find((el) => {
     if (!isVisibleElement(el)) return false;
-    const type = String(el.getAttribute?.('type') || '').trim().toLowerCase();
-    const name = String(el.getAttribute?.('name') || '').trim().toLowerCase();
-    const id = String(el.getAttribute?.('id') || '').trim().toLowerCase();
-    const placeholder = String(el.getAttribute?.('placeholder') || '').trim();
-    const ariaLabel = String(el.getAttribute?.('aria-label') || '').trim();
-    const autocomplete = String(el.getAttribute?.('autocomplete') || '').trim().toLowerCase();
-    const combinedText = `${placeholder} ${ariaLabel}`;
-    return type === 'email'
-      || autocomplete === 'email'
-      || autocomplete === 'username'
-      || /email|username/i.test(`${name} ${id}`)
-      || /email|电子邮件|邮箱/i.test(combinedText);
+    const hints = getSignupInputHints(el);
+    if (isLikelySignupPhoneInput(el) && !isExplicitSignupEmailInput(el)) return false;
+    return isExplicitSignupEmailInput(el)
+      || isGenericSignupUsernameInput(el);
   });
 
   return fallback || null;
@@ -387,17 +748,7 @@ function getSignupPhoneInput() {
 
   const fallback = Array.from(document.querySelectorAll('input')).find((el) => {
     if (!isVisibleElement(el)) return false;
-    const type = String(el.getAttribute?.('type') || '').trim().toLowerCase();
-    const name = String(el.getAttribute?.('name') || '').trim().toLowerCase();
-    const id = String(el.getAttribute?.('id') || '').trim().toLowerCase();
-    const placeholder = String(el.getAttribute?.('placeholder') || '').trim();
-    const ariaLabel = String(el.getAttribute?.('aria-label') || '').trim();
-    const autocomplete = String(el.getAttribute?.('autocomplete') || '').trim().toLowerCase();
-    const combinedText = `${placeholder} ${ariaLabel}`;
-    return type === 'tel'
-      || autocomplete === 'tel'
-      || /phone|tel/i.test(`${name} ${id}`)
-      || /手机|电话|手机号/.test(combinedText);
+    return isLikelySignupPhoneInput(el);
   });
 
   return fallback || null;
@@ -479,6 +830,24 @@ function inspectSignupEntryState() {
       displayedEmail: getSignupPasswordDisplayedEmail(),
       url: location.href,
     };
+  }
+
+  const switchToEmailTrigger = findSignupUseEmailTrigger();
+  if (switchToEmailTrigger) {
+    const phoneInput = getSignupPhoneInput() || (
+      (() => {
+        const input = document.querySelector(SIGNUP_EMAIL_INPUT_SELECTOR);
+        return input && isVisibleElement(input) && isGenericSignupUsernameInput(input) ? input : null;
+      })()
+    );
+    if (phoneInput) {
+      return {
+        state: 'phone_entry',
+        phoneInput,
+        switchToEmailTrigger,
+        url: location.href,
+      };
+    }
   }
 
   const emailInput = getSignupEmailInput();
@@ -852,7 +1221,13 @@ async function waitForSignupEntryState(options = {}) {
         }
         log('步骤 2：检测到手机号输入模式，正在切换到邮箱输入模式...');
         await humanPause(350, 900);
-        simulateClick(snapshot.switchToEmailTrigger);
+        await clickActionWhenReady(
+          () => {
+            const latestSnapshot = inspectSignupEntryState();
+            return latestSnapshot.switchToEmailTrigger || snapshot.switchToEmailTrigger;
+          },
+          { timeout: 5000, pollInterval: 120 }
+        );
       } else if (!snapshot.switchToEmailTrigger && !loggedMissingSwitchToEmail) {
         loggedMissingSwitchToEmail = true;
         log('步骤 2：检测到手机号输入模式，但暂未识别到“改用邮箱/继续使用电子邮件地址登录”按钮，继续等待界面稳定...', 'warn');
@@ -880,7 +1255,13 @@ async function waitForSignupEntryState(options = {}) {
         }
         log('步骤 2：正在点击官网注册入口...');
         await humanPause(350, 900);
-        simulateClick(snapshot.signupTrigger);
+        await clickActionWhenReady(
+          () => {
+            const latestSnapshot = inspectSignupEntryState();
+            return latestSnapshot.signupTrigger || snapshot.signupTrigger;
+          },
+          { timeout: 5000, pollInterval: 120 }
+        );
       }
     }
 
@@ -989,10 +1370,16 @@ async function fillSignupEmailAndContinue(email, step) {
   }
 
   log(`步骤 ${step}：邮箱已准备提交，正在前往密码页...`);
-  window.setTimeout(() => {
+  window.setTimeout(async () => {
     try {
       throwIfStopped();
-      simulateClick(continueButton);
+      const clicked = await clickActionWhenReady(
+        () => snapshot.continueButton || getSignupEmailContinueButton({ allowDisabled: true }) || continueButton,
+        { timeout: 8000, pollInterval: 120 }
+      );
+      if (!clicked) {
+        throw new Error(`步骤 ${step}：等待“继续”按钮可点击超时。URL: ${location.href}`);
+      }
     } catch (error) {
       if (!isStopError(error)) {
         console.error('[MultiPage:signup-page] deferred signup email submit failed:', error?.message || error);
@@ -1084,6 +1471,97 @@ function getSignupCountryLabelAliases(value) {
   }
 
   return Array.from(aliases);
+}
+
+function getSignupPhoneCountryCandidateEntries(options = {}) {
+  const entries = [];
+  const seen = new Set();
+  const pushEntry = (entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      return;
+    }
+    const id = normalizeSignupCountryOptionValue(entry.id ?? entry.countryId ?? entry.countryCode ?? '');
+    const label = String(entry.label ?? entry.countryLabel ?? '').trim();
+    if (!id && !label) {
+      return;
+    }
+    const key = `${id || '-'}::${normalizeSignupCountryLabel(label) || '-'}`;
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    entries.push({
+      id,
+      label,
+    });
+  };
+
+  pushEntry({
+    id: options.countryId,
+    label: options.countryLabel,
+  });
+
+  pushEntry({
+    id: options.heroSmsCountryId,
+    label: options.heroSmsCountryLabel,
+  });
+
+  pushEntry(options.heroSmsCountry);
+
+  const candidateList = Array.isArray(options.heroSmsCountryCandidates)
+    ? options.heroSmsCountryCandidates
+    : [];
+  candidateList.forEach(pushEntry);
+
+  const fallbackList = Array.isArray(options.heroSmsCountryFallback)
+    ? options.heroSmsCountryFallback
+    : [];
+  fallbackList.forEach(pushEntry);
+
+  return entries;
+}
+
+function getSignupPhoneCountryCandidateLabels(options = {}, filterDialCode = '') {
+  const labels = new Set();
+  const normalizedFilterDialCode = normalizePhoneDigits(filterDialCode);
+  const filterAliases = getSignupCountryAliasesByDialCode(normalizedFilterDialCode)
+    .map((alias) => normalizeSignupCountryLabel(alias))
+    .filter(Boolean);
+  const pushLabel = (value) => {
+    getSignupCountryLabelAliases(value).forEach((alias) => labels.add(alias));
+  };
+
+  getSignupPhoneCountryCandidateEntries(options).forEach((entry) => {
+    if (filterAliases.length) {
+      const entryAliases = [
+        entry.label,
+        entry.id,
+        ...getSignupCountryAliasesByDialCode(entry.id),
+      ].flatMap((value) => getSignupCountryLabelAliases(value));
+      if (!entryAliases.some((alias) => filterAliases.includes(alias))) {
+        return;
+      }
+    }
+    pushLabel(entry.label);
+    if (entry.id) {
+      pushLabel(entry.id);
+      getSignupCountryAliasesByDialCode(entry.id).forEach(pushLabel);
+    }
+  });
+
+  return Array.from(labels);
+}
+
+function getSignupCountryAliasesByDialCode(dialCode) {
+  const normalizedDialCode = normalizePhoneDigits(dialCode);
+  const aliasesByDialCode = {
+    44: ['GB', 'UK', 'United Kingdom', 'Great Britain', 'Britain', 'England', '英国', '英格兰', '大不列颠'],
+    56: ['CL', 'Chile', '智利'],
+    61: ['AU', 'Australia', '澳大利亚'],
+    66: ['TH', 'Thailand', '泰国'],
+    84: ['VN', 'Vietnam', '越南'],
+  };
+  return aliasesByDialCode[normalizedDialCode] || [];
 }
 
 function getSignupPhoneOptionLabel(option) {
@@ -1365,6 +1843,7 @@ function resolveSignupPhoneTargetDialCode(options = {}, targetOption = null) {
 
   const countryText = String(options.countryLabel || '').trim();
   if (/australia|澳大利亚/i.test(countryText)) return '61';
+  if (/chile|智利/i.test(countryText)) return '56';
   if (/thailand|泰国/i.test(countryText)) return '66';
   if (/vietnam|越南/i.test(countryText)) return '84';
   if (/england|united\s*kingdom|great\s*britain|\bbritain\b|英国|英格兰|uk|gb/i.test(countryText)) return '44';
@@ -1379,9 +1858,15 @@ function getSignupPhoneCountryTargetLabels(targetOption, options = {}) {
   };
 
   addLabel(options.countryLabel);
+  const targetDialCode = resolveSignupPhoneTargetDialCode(options, targetOption);
+  getSignupPhoneCountryCandidateLabels(options, targetDialCode).forEach(addLabel);
+  if (!targetDialCode && getSignupPhoneCountryCandidateEntries(options).length === 1) {
+    getSignupPhoneCountryCandidateLabels(options).forEach(addLabel);
+  }
   if (targetOption) {
     getSignupPhoneCountryMatchLabels(targetOption).forEach(addLabel);
   }
+  getSignupCountryAliasesByDialCode(targetDialCode).forEach(addLabel);
 
   return Array.from(labels);
 }
@@ -1435,7 +1920,7 @@ function isSignupPhoneCountrySelectionSynced(phoneInput, targetOption, options =
   return Boolean(selectedOption && !targetOption && targetDialCode && displayedDialCode === targetDialCode);
 }
 
-function findSignupPhoneCountryOptionByLabel(phoneInput, countryLabel) {
+function findSignupPhoneCountryOptionByLabel(phoneInput, countryLabel, options = {}) {
   const select = getSignupPhoneCountrySelect(phoneInput);
   if (!select) {
     return null;
@@ -1451,19 +1936,33 @@ function findSignupPhoneCountryOptionByLabel(phoneInput, countryLabel) {
     });
   }
   const normalizedTargets = getSignupCountryLabelAliases(countryLabel);
+  const candidateEntries = getSignupPhoneCountryCandidateEntries(options);
+  const candidateTargets = normalizedTargets.length
+    ? getSignupPhoneCountryCandidateLabels(options)
+    : (candidateEntries.length === 1 ? getSignupPhoneCountryCandidateLabels(options) : []);
   if (normalizedTargets.length === 0) {
+    if (!candidateTargets.length) {
+      return null;
+    }
+    return Array.from(select.options || []).find((option) => (
+      getSignupPhoneCountryMatchLabels(option).some((label) => candidateTargets.includes(normalizeSignupCountryLabel(label)))
+    )) || null;
+  }
+
+  const allTargets = [...normalizedTargets, ...candidateTargets];
+  if (allTargets.length === 0) {
     return null;
   }
 
-  const options = Array.from(select.options || []);
-  return options.find((option) => (
-    getSignupPhoneCountryMatchLabels(option).some((label) => normalizedTargets.includes(normalizeSignupCountryLabel(label)))
+  const selectOptions = Array.from(select.options || []);
+  return selectOptions.find((option) => (
+    getSignupPhoneCountryMatchLabels(option).some((label) => allTargets.includes(normalizeSignupCountryLabel(label)))
   ))
-    || options.find((option) => {
+    || selectOptions.find((option) => {
       const normalizedLabels = getSignupPhoneCountryMatchLabels(option)
         .map((label) => normalizeSignupCountryLabel(label))
         .filter(Boolean);
-      return normalizedLabels.some((optionLabel) => normalizedTargets.some((normalizedTarget) => (
+      return normalizedLabels.some((optionLabel) => allTargets.some((normalizedTarget) => (
         optionLabel.length > 2
         && normalizedTarget.length > 2
         && (optionLabel.includes(normalizedTarget) || normalizedTarget.includes(optionLabel))
@@ -1472,7 +1971,7 @@ function findSignupPhoneCountryOptionByLabel(phoneInput, countryLabel) {
     || null;
 }
 
-function findSignupPhoneCountryOptionByPhoneNumber(phoneInput, phoneNumber) {
+function findSignupPhoneCountryOptionByPhoneNumber(phoneInput, phoneNumber, options = {}) {
   const select = getSignupPhoneCountrySelect(phoneInput);
   if (!select) {
     return null;
@@ -1502,7 +2001,30 @@ function findSignupPhoneCountryOptionByPhoneNumber(phoneInput, phoneNumber) {
       bestDialCodeLength = dialCode.length;
     }
   }
-  return bestMatch;
+  if (bestMatch) {
+    return bestMatch;
+  }
+
+  const targetDialCode = resolveSignupPhoneDialCodeFromNumber(phoneNumber);
+  const candidateTargets = getSignupPhoneCountryCandidateLabels(options, targetDialCode);
+  const targetAliases = getSignupCountryAliasesByDialCode(targetDialCode)
+    .map((label) => normalizeSignupCountryLabel(label))
+    .filter(Boolean);
+  const combinedTargets = [...candidateTargets, ...targetAliases].filter((label, index, list) => (
+    label && index === list.indexOf(label)
+  ));
+  if (!combinedTargets.length && getSignupPhoneCountryCandidateEntries(options).length === 1) {
+    getSignupPhoneCountryCandidateLabels(options).forEach((label) => combinedTargets.push(label));
+  }
+  if (!combinedTargets.length) {
+    return null;
+  }
+  return Array.from(select.options || []).find((option) => {
+    const optionLabels = getSignupPhoneCountryMatchLabels(option)
+      .map((label) => normalizeSignupCountryLabel(label))
+      .filter(Boolean);
+    return optionLabels.some((optionLabel) => combinedTargets.includes(optionLabel));
+  }) || null;
 }
 
 async function trySelectSignupPhoneCountryOption(select, targetOption, phoneInput = getSignupPhoneInput(), options = {}) {
@@ -1652,7 +2174,12 @@ async function trySelectSignupPhoneCountryListboxOption(phoneInput, targetOption
   };
 
   simulateClick(button);
-  await sleep(200);
+  await sleep(120);
+  const openStartedAt = Date.now();
+  while (Date.now() - openStartedAt < 1500 && getVisibleSignupPhoneCountryListboxOptions().length === 0) {
+    throwIfStopped();
+    await sleep(100);
+  }
   resetListboxScroll();
 
   const start = Date.now();
@@ -1695,8 +2222,8 @@ async function ensureSignupPhoneCountrySelected(phoneInput, options = {}) {
     };
   }
 
-  const byLabel = findSignupPhoneCountryOptionByLabel(phoneInput, options.countryLabel);
-  const byPhoneNumber = findSignupPhoneCountryOptionByPhoneNumber(phoneInput, options.phoneNumber);
+  const byLabel = findSignupPhoneCountryOptionByLabel(phoneInput, options.countryLabel, options);
+  const byPhoneNumber = findSignupPhoneCountryOptionByPhoneNumber(phoneInput, options.phoneNumber, options);
   const targets = [byLabel, byPhoneNumber, null].filter((target, index, list) => (
     index === list.findIndex((item) => (
       (!item && !target)
@@ -1815,14 +2342,23 @@ async function waitForSignupPhoneEntryState(options = {}) {
         lastSwitchToPhoneAt = Date.now();
         log(`步骤 ${step}：检测到邮箱输入模式，正在切换到手机号注册入口...`);
         await humanPause(350, 900);
-        simulateClick(switchToPhone);
+        await clickActionWhenReady(
+          () => {
+            const latestSnapshot = inspectSignupEntryState();
+            return latestSnapshot.switchToPhoneTrigger || findSignupUsePhoneTrigger() || switchToPhone;
+          },
+          { timeout: 5000, pollInterval: 120 }
+        );
       } else {
         const moreOptionsTrigger = findSignupMoreOptionsTrigger();
         if (moreOptionsTrigger && Date.now() - lastMoreOptionsClickAt >= 1500) {
           lastMoreOptionsClickAt = Date.now();
           log(`步骤 ${step}：手机号入口可能隐藏在更多选项中，正在展开更多选项...`);
           await humanPause(350, 900);
-          simulateClick(moreOptionsTrigger);
+          await clickActionWhenReady(
+            () => findSignupMoreOptionsTrigger() || moreOptionsTrigger,
+            { timeout: 5000, pollInterval: 120 }
+          );
         } else if (!switchToPhone && !slowSnapshotLogged && Date.now() - start >= 5000) {
           slowSnapshotLogged = true;
           log(`步骤 ${step}：尚未找到手机号入口，页面诊断快照：${JSON.stringify(getSignupEntryDiagnostics())}`, 'warn');
@@ -1837,7 +2373,13 @@ async function waitForSignupPhoneEntryState(options = {}) {
         lastTriggerClickAt = Date.now();
         log(`步骤 ${step}：正在点击官网注册入口...`);
         await humanPause(350, 900);
-        simulateClick(snapshot.signupTrigger);
+        await clickActionWhenReady(
+          () => {
+            const latestSnapshot = inspectSignupEntryState();
+            return latestSnapshot.signupTrigger || snapshot.signupTrigger;
+          },
+          { timeout: 5000, pollInterval: 120 }
+        );
       }
       await sleep(250);
       continue;
@@ -1915,10 +2457,16 @@ async function submitSignupPhoneNumberAndContinue(payload = {}) {
   }
 
   log('步骤 2：手机号已准备提交，正在前往下一页...');
-  window.setTimeout(() => {
+  window.setTimeout(async () => {
     try {
       throwIfStopped();
-      simulateClick(continueButton);
+      const clicked = await clickActionWhenReady(
+        () => getSignupEmailContinueButton({ allowDisabled: true }) || continueButton,
+        { timeout: 8000, pollInterval: 120 }
+      );
+      if (!clicked) {
+        throw new Error(`步骤 2：等待“继续”按钮可点击超时。URL: ${location.href}`);
+      }
     } catch (error) {
       if (!isStopError(error)) {
         console.error('[MultiPage:signup-page] deferred signup phone submit failed:', error?.message || error);
@@ -2016,7 +2564,13 @@ async function step3_fillEmailPassword(payload) {
         throwIfStopped();
         await sleep(500);
         await humanPause(500, 1300);
-        simulateClick(submitBtn);
+        const clicked = await clickActionWhenReady(
+          () => getSignupPasswordSubmitButton({ allowDisabled: true }) || submitBtn,
+          { timeout: 8000, pollInterval: 120 }
+        );
+        if (!clicked) {
+          throw new Error(`步骤 3：等待密码页提交按钮可点击超时。URL: ${location.href}`);
+        }
         log('步骤 3：表单已提交');
       } catch (error) {
         if (!isStopError(error)) {
@@ -2742,10 +3296,29 @@ function getLoginEmailInput() {
   const input = document.querySelector(
     'input[type="email"], input[name="email"], input[name="username"], input[id*="email"], input[placeholder*="email" i], input[placeholder*="Email"]'
   );
-  if (isLoginPhoneUsernameKind() || isLoginPhoneEntryPageText()) {
+  if (isLoginPhoneUsernameKind()) {
     return null;
   }
-  return input && isVisibleElement(input) ? input : null;
+  if (!input || !isVisibleElement(input)) {
+    return null;
+  }
+
+  const inputType = String(input.getAttribute?.('type') || input.type || '').trim().toLowerCase();
+  const inputName = String(input.getAttribute?.('name') || input.name || '').trim().toLowerCase();
+  const inputId = String(input.getAttribute?.('id') || input.id || '').trim().toLowerCase();
+  const inputPlaceholder = String(input.getAttribute?.('placeholder') || '').trim();
+  const inputAriaLabel = String(input.getAttribute?.('aria-label') || '').trim();
+  const inputAutocomplete = String(input.getAttribute?.('autocomplete') || '').trim().toLowerCase();
+  const explicitEmailInput = inputType === 'email'
+    || inputAutocomplete === 'email'
+    || /email/i.test(`${inputName} ${inputId}`)
+    || /email|电子邮件|邮箱/i.test(`${inputPlaceholder} ${inputAriaLabel}`);
+
+  if (!explicitEmailInput && isLoginPhoneEntryPageText()) {
+    return null;
+  }
+
+  return input;
 }
 
 function isLoginPhoneUsernameKind(rawUrl = location.href) {
@@ -2918,11 +3491,18 @@ function findLoginPhoneEntryTrigger() {
 
   return candidates.find((el) => {
     const text = getActionText(el);
-    if (!text || LOGIN_CODE_ONLY_ACTION_PATTERN.test(text) || LOGIN_EXTERNAL_IDP_PATTERN.test(text)) return false;
-    return LOGIN_SWITCH_TO_PHONE_PATTERN.test(text)
+    const blockedByCodeAction = Boolean(text && LOGIN_CODE_ONLY_ACTION_PATTERN.test(text));
+    const blockedByExternalIdp = Boolean(text && LOGIN_EXTERNAL_IDP_PATTERN.test(text));
+    const switchPatternMatched = Boolean(text && LOGIN_SWITCH_TO_PHONE_PATTERN.test(text));
+    const genericPhoneMatched = Boolean(
+      text
+      && LOGIN_PHONE_ACTION_PATTERN.test(text)
+      && !/email|邮箱|电子邮件/i.test(text)
+    );
+    if (!text || blockedByCodeAction || blockedByExternalIdp) return false;
+    return switchPatternMatched
       || (
-        LOGIN_PHONE_ACTION_PATTERN.test(text)
-        && !/email|邮箱|电子邮件/i.test(text)
+        genericPhoneMatched
       );
   }) || null;
 }
@@ -3095,7 +3675,7 @@ function inspectLoginAuthState() {
     };
   }
 
-  if (loginEntryTrigger) {
+  if (loginEntryTrigger || phoneEntryTrigger) {
     return {
       ...baseState,
       state: 'entry_page',
@@ -3448,6 +4028,27 @@ async function triggerLoginSubmitAction(button, fallbackField) {
   const form = button?.form || fallbackField?.form || button?.closest?.('form') || fallbackField?.closest?.('form') || null;
 
   await humanPause(400, 1100);
+  if (button) {
+    const clickedButton = await clickActionWhenReady(
+      () => (button && isElementConnectedToDocument(button) ? button : null),
+      { timeout: 8000, pollInterval: 120 }
+    );
+    if (clickedButton) {
+      return;
+    }
+  }
+
+  const fallbackButton = getLoginSubmitButton({ allowDisabled: true });
+  if (fallbackButton) {
+    const clickedFallback = await clickActionWhenReady(
+      () => getLoginSubmitButton({ allowDisabled: true }) || fallbackButton,
+      { timeout: 8000, pollInterval: 120 }
+    );
+    if (clickedFallback) {
+      return;
+    }
+  }
+
   if (button && isActionEnabled(button)) {
     simulateClick(button);
     return;
@@ -3637,7 +4238,13 @@ async function prepareSignupVerificationFlow(payload = {}, timeout = 30000) {
       if (snapshot.submitButton && isActionEnabled(snapshot.submitButton)) {
         log(`${prepareLogLabel}：页面仍停留在密码页，正在重新点击“继续”（第 ${recoveryRound}/${maxRecoveryRounds} 次）...`, 'warn');
         await humanPause(350, 900);
-        simulateClick(snapshot.submitButton);
+        await clickActionWhenReady(
+          () => {
+            const latestSnapshot = inspectSignupVerificationState();
+            return latestSnapshot.submitButton || snapshot.submitButton;
+          },
+          { timeout: 8000, pollInterval: 120 }
+        );
         await sleep(1200);
         continue;
       }
@@ -3919,7 +4526,13 @@ async function fillVerificationCode(step, payload) {
     const splitSubmitBtn = await waitForVerificationSubmitButton(splitInputs[0], 2000).catch(() => null);
     if (splitSubmitBtn) {
       await humanPause(450, 1200);
-      simulateClick(splitSubmitBtn);
+      const clicked = await clickActionWhenReady(
+        () => getVerificationSubmitButtonForTarget(splitInputs[0], { allowDisabled: false }) || splitSubmitBtn,
+        { timeout: 5000, pollInterval: 120 }
+      );
+      if (!clicked) {
+        throw new Error(`步骤 ${step}：分格验证码提交按钮已找到，但页面加载完成前一直不可点击。URL: ${location.href}`);
+      }
       log(`步骤 ${step}：分格验证码已提交`);
     } else {
       log(`步骤 ${step}：分格验证码页面未找到可点击提交按钮，继续等待页面自动推进。`, 'info');
@@ -3949,7 +4562,13 @@ async function fillVerificationCode(step, payload) {
 
   if (submitBtn) {
     await humanPause(450, 1200);
-    simulateClick(submitBtn);
+    const clicked = await clickActionWhenReady(
+      () => getVerificationSubmitButtonForTarget(codeInput, { allowDisabled: false }) || submitBtn,
+      { timeout: 5000, pollInterval: 120 }
+    );
+    if (!clicked) {
+      throw new Error(`步骤 ${step}：验证码提交按钮已找到，但页面加载完成前一直不可点击。URL: ${location.href}`);
+    }
     log(`步骤 ${step}：验证码已提交`);
   } else {
     log(`步骤 ${step}：未找到可提交的验证码按钮，先等待页面自动推进或反馈结果。`, 'warn');
@@ -4198,17 +4817,49 @@ async function step6OpenLoginEntry(payload, snapshot) {
   const trigger = preferPhoneLogin
     ? (currentSnapshot.phoneEntryTrigger || findLoginPhoneEntryTrigger())
     : (currentSnapshot.loginEntryTrigger || findLoginEntryTrigger());
-  if (!trigger || !isActionEnabled(trigger)) {
+  if (preferPhoneLogin && (!trigger || !isActionEnabled(trigger))) {
     return createStep6RecoverableResult('missing_login_entry_trigger', currentSnapshot, {
-      message: preferPhoneLogin
-        ? '当前登录入口页没有可点击的手机号登录入口。'
-        : '当前登录入口页没有可点击的邮箱登录入口。',
+      message: '当前登录入口页没有可点击的手机号登录入口。',
     });
   }
 
-  log(`检测到登录入口页，正在点击 "${getActionText(trigger).slice(0, 80)}"...`, 'info', { step: visibleStep, stepKey: 'oauth-login' });
-  await humanPause(350, 900);
-  simulateClick(trigger);
+  if (preferPhoneLogin) {
+    log(`检测到登录入口页，正在点击 "${getActionText(trigger).slice(0, 80)}"...`, 'info', { step: visibleStep, stepKey: 'oauth-login' });
+    await humanPause(350, 900);
+    const clickedTrigger = await waitForLoginPhoneEntryTriggerReady(
+      () => {
+        const latestSnapshot = normalizeStep6Snapshot(inspectLoginAuthState());
+        return latestSnapshot.phoneEntryTrigger || findLoginPhoneEntryTrigger() || trigger;
+      },
+      { timeout: 8000, pollInterval: 120, visibleStep }
+    );
+    if (!clickedTrigger) {
+      return createStep6RecoverableResult('login_entry_trigger_not_ready', currentSnapshot, {
+        message: '手机号登录入口已识别，但页面加载完成前一直不可点击。',
+      });
+    }
+    await activateLoginPhoneEntryTrigger(clickedTrigger, {
+      visibleStep,
+      label: getActionText(clickedTrigger).slice(0, 80),
+    });
+  } else if (trigger && isActionEnabled(trigger)) {
+    log(`检测到邮箱登录入口页，正在点击 "${getActionText(trigger).slice(0, 80)}"...`, 'info', { step: visibleStep, stepKey: 'oauth-login' });
+    await humanPause(350, 900);
+    const clickedTrigger = await clickActionWhenReady(
+      () => {
+        const latestSnapshot = normalizeStep6Snapshot(inspectLoginAuthState());
+        return latestSnapshot.loginEntryTrigger || findLoginEntryTrigger() || trigger;
+      },
+      { timeout: 8000, pollInterval: 120 }
+    );
+    if (!clickedTrigger) {
+      return createStep6RecoverableResult('login_entry_trigger_not_ready', currentSnapshot, {
+        message: '邮箱登录入口已识别，但页面加载完成前一直不可点击。',
+      });
+    }
+  } else {
+    log('当前登录入口页没有单独的邮箱登录按钮，等待默认邮箱输入框出现...', 'info', { step: visibleStep, stepKey: 'oauth-login' });
+  }
   const nextSnapshot = await waitForLoginEntryOpenTransition();
 
   if (nextSnapshot.state === 'email_page') {
@@ -4255,7 +4906,9 @@ async function step6OpenLoginEntry(payload, snapshot) {
   }
 
   return createStep6RecoverableResult('login_entry_open_stalled', nextSnapshot, {
-    message: '点击登录入口后仍未进入手机号/邮箱/密码/验证码页。',
+    message: preferPhoneLogin
+      ? '点击登录入口后仍未进入手机号/邮箱/密码/验证码页。'
+      : '等待默认邮箱输入框后仍未进入邮箱/密码/验证码页。',
   });
 }
 
@@ -4271,7 +4924,15 @@ async function step6SwitchToOneTimeCodeLogin(payload, snapshot) {
   log('已检测到一次性验证码登录入口，准备切换...', 'info', { step: visibleStep, stepKey: 'oauth-login' });
   const loginVerificationRequestedAt = Date.now();
   await humanPause(350, 900);
-  simulateClick(switchTrigger);
+  const clickedSwitch = await clickActionWhenReady(
+    () => findOneTimeCodeLoginTrigger() || switchTrigger,
+    { timeout: 8000, pollInterval: 120 }
+  );
+  if (!clickedSwitch) {
+    return createStep6RecoverableResult('one_time_code_trigger_not_ready', normalizeStep6Snapshot(inspectLoginAuthState()), {
+      message: '一次性验证码登录入口已识别，但页面加载完成前一直不可点击。',
+    });
+  }
   log('已点击一次性验证码登录', 'info', { step: visibleStep, stepKey: 'oauth-login' });
   await sleep(1200);
   const result = await waitForStep6SwitchTransition(loginVerificationRequestedAt, 10000, { visibleStep });
@@ -4794,6 +5455,11 @@ async function selectCountryForPhoneInput(phoneInput, phoneNumber = '', countryL
   const selection = await ensureSignupPhoneCountrySelected(phoneInput, {
     countryLabel,
     phoneNumber,
+    countryId: options.countryId,
+    heroSmsCountryId: options.heroSmsCountryId,
+    heroSmsCountryLabel: options.heroSmsCountryLabel,
+    heroSmsCountryFallback: options.heroSmsCountryFallback,
+    heroSmsCountryCandidates: options.heroSmsCountryCandidates,
   });
   const selectedOption = selection.selectedOption || getSignupPhoneSelectedCountryOption(phoneInput);
   const targetDialCode = resolveSignupPhoneTargetDialCode({ countryLabel, phoneNumber }, selectedOption);
@@ -5057,10 +5723,42 @@ async function switchFromEmailPageToPhoneLogin(payload, snapshot) {
         stepKey: 'oauth-login',
       });
       await humanPause(350, 900);
-      simulateClick(moreOptionsTrigger);
+      await clickActionWhenReady(
+        () => {
+          const latestSnapshot = normalizeStep6Snapshot(inspectLoginAuthState());
+          return latestSnapshot.moreOptionsTrigger || findLoginMoreOptionsTrigger() || moreOptionsTrigger;
+        },
+        { timeout: 8000, pollInterval: 120 }
+      );
       await sleep(800);
       currentSnapshot = normalizeStep6Snapshot(inspectLoginAuthState());
       phoneEntryTrigger = currentSnapshot.phoneEntryTrigger || findLoginPhoneEntryTrigger();
+    }
+  }
+
+  if (!phoneEntryTrigger || !isActionEnabled(phoneEntryTrigger)) {
+    const waitStart = Date.now();
+    let loggedWaitingForPhoneTrigger = false;
+    while (Date.now() - waitStart < 10000) {
+      throwIfStopped();
+      currentSnapshot = normalizeStep6Snapshot(inspectLoginAuthState());
+      phoneEntryTrigger = currentSnapshot.phoneEntryTrigger || findLoginPhoneEntryTrigger();
+      if (phoneEntryTrigger && isActionEnabled(phoneEntryTrigger)) {
+        log(`步骤 ${visibleStep}：已找到手机号登录按钮 "${getActionText(phoneEntryTrigger).slice(0, 80)}"，准备跳出等待。`, 'info', {
+          step: visibleStep,
+          stepKey: 'oauth-login',
+        });
+        break;
+      }
+
+      if (!loggedWaitingForPhoneTrigger) {
+        loggedWaitingForPhoneTrigger = true;
+        log(`步骤 ${visibleStep}：正在等待页面加载手机号登录按钮“使用电话号码继续”...`, 'info', {
+          step: visibleStep,
+          stepKey: 'oauth-login',
+        });
+      }
+      await sleep(200);
     }
   }
 
@@ -5072,7 +5770,22 @@ async function switchFromEmailPageToPhoneLogin(payload, snapshot) {
 
   log(`步骤 ${visibleStep}：当前在邮箱入口，正在切换到手机号登录...`, 'info', { step: visibleStep, stepKey: 'oauth-login' });
   await humanPause(350, 900);
-  simulateClick(phoneEntryTrigger);
+  const clickedPhoneEntryTrigger = await waitForLoginPhoneEntryTriggerReady(
+    () => {
+      const latestSnapshot = normalizeStep6Snapshot(inspectLoginAuthState());
+      return latestSnapshot.phoneEntryTrigger || findLoginPhoneEntryTrigger() || phoneEntryTrigger;
+    },
+    { timeout: 10000, pollInterval: 120, visibleStep }
+  );
+  if (!clickedPhoneEntryTrigger) {
+    return createStep6RecoverableResult('phone_login_entry_trigger_not_ready', currentSnapshot, {
+      message: '已识别手机号登录入口，但页面加载完成前一直不可点击。',
+    });
+  }
+  await activateLoginPhoneEntryTrigger(clickedPhoneEntryTrigger, {
+    visibleStep,
+    label: getActionText(clickedPhoneEntryTrigger).slice(0, 80),
+  });
   const nextSnapshot = normalizeStep6Snapshot(await waitForPhoneLoginEntrySwitchTransition(20000));
   if (nextSnapshot.state === 'phone_entry_page') {
     return step6LoginFromPhonePage(payload, nextSnapshot);
@@ -5309,12 +6022,25 @@ async function prepareStep8ContinueButton(options = {}) {
 
   const continueBtn = await findContinueButton(findTimeoutMs);
   await waitForButtonEnabled(continueBtn, enabledTimeoutMs);
+  const readyContinueBtn = await waitForActionReady(
+    () => getPrimaryContinueButton() || continueBtn,
+    {
+      timeout: enabledTimeoutMs,
+      pollInterval: 150,
+      stableRectTimeout: 0,
+      minUrlStableMs: 500,
+      pageStableMs: 900,
+    }
+  );
+  if (!readyContinueBtn) {
+    throw new Error('OAuth 同意页仍在加载或“继续”按钮未稳定，暂不点击。URL: ' + location.href);
+  }
 
   await humanPause(250, 700);
-  continueBtn.scrollIntoView({ behavior: 'auto', block: 'center' });
-  continueBtn.focus();
-  await waitForStableButtonRect(continueBtn);
-  return continueBtn;
+  readyContinueBtn.scrollIntoView({ behavior: 'auto', block: 'center' });
+  readyContinueBtn.focus();
+  await waitForStableButtonRect(readyContinueBtn);
+  return readyContinueBtn;
 }
 
 async function findContinueButton(timeout = 10000) {
@@ -5633,7 +6359,13 @@ async function step5_fillNameBirthday(payload) {
   }
 
   await humanPause(500, 1300);
-  simulateClick(completeBtn);
+  const clickedComplete = await clickActionWhenReady(
+    () => document.querySelector('button[type="submit"]') || completeBtn,
+    { timeout: 8000, pollInterval: 120 }
+  );
+  if (!clickedComplete) {
+    throw new Error('“完成帐户创建”按钮已找到，但页面加载完成前一直不可点击。URL: ' + location.href);
+  }
 
   const completionPayload = getStep5DirectCompletionPayload({ isAgeMode });
   reportComplete(5, completionPayload);

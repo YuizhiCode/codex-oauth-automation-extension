@@ -97,6 +97,8 @@ const emailInput = {
 };
 
 const document = {
+  readyState: 'complete',
+  body: {},
   querySelector(selector) {
     if (selector === SIGNUP_EMAIL_INPUT_SELECTOR) {
       return phase === 'email' ? emailInput : null;
@@ -195,12 +197,21 @@ async function sleep(ms) {
   now += ms;
 }
 
+${extractFunction('getSignupInputHints')}
+${extractFunction('isExplicitSignupEmailInput')}
+${extractFunction('isGenericSignupUsernameInput')}
+${extractFunction('isLikelySignupPhoneInput')}
 ${extractFunction('getSignupEmailInput')}
 ${extractFunction('getSignupPhoneInput')}
 ${extractFunction('findSignupUseEmailTrigger')}
 ${extractFunction('findSignupUsePhoneTrigger')}
 ${extractFunction('getSignupEmailContinueButton')}
 ${extractFunction('inspectSignupEntryState')}
+${extractFunction('isDocumentReadyForAction')}
+${extractFunction('isElementConnectedToDocument')}
+${extractFunction('waitForStableButtonRect')}
+${extractFunction('waitForActionReady')}
+${extractFunction('clickActionWhenReady')}
 ${extractFunction('waitForSignupEntryState')}
 
 return {
@@ -273,6 +284,8 @@ const emailInput = {
 };
 
 const document = {
+  readyState: 'complete',
+  body: {},
   querySelector(selector) {
     if (selector === SIGNUP_EMAIL_INPUT_SELECTOR) {
       return phase === 'email' ? emailInput : null;
@@ -371,12 +384,21 @@ async function sleep(ms) {
   now += ms;
 }
 
+${extractFunction('getSignupInputHints')}
+${extractFunction('isExplicitSignupEmailInput')}
+${extractFunction('isGenericSignupUsernameInput')}
+${extractFunction('isLikelySignupPhoneInput')}
 ${extractFunction('getSignupEmailInput')}
 ${extractFunction('getSignupPhoneInput')}
 ${extractFunction('findSignupUseEmailTrigger')}
 ${extractFunction('findSignupUsePhoneTrigger')}
 ${extractFunction('getSignupEmailContinueButton')}
 ${extractFunction('inspectSignupEntryState')}
+${extractFunction('isDocumentReadyForAction')}
+${extractFunction('isElementConnectedToDocument')}
+${extractFunction('waitForStableButtonRect')}
+${extractFunction('waitForActionReady')}
+${extractFunction('clickActionWhenReady')}
 ${extractFunction('waitForSignupEntryState')}
 
 return {
@@ -424,6 +446,10 @@ function isVisibleElement(el) {
   return Boolean(el);
 }
 
+${extractFunction('getSignupInputHints')}
+${extractFunction('isExplicitSignupEmailInput')}
+${extractFunction('isGenericSignupUsernameInput')}
+${extractFunction('isLikelySignupPhoneInput')}
 ${extractFunction('getSignupEmailInput')}
 
 return {
@@ -434,4 +460,445 @@ return {
 `)();
 
   assert.equal(api.run()?.kind, 'localized-email');
+});
+
+test('findSignupUsePhoneTrigger recognizes Chinese continue-with-phone action text', () => {
+  const api = new Function(`
+const phoneSignupButton = {
+  textContent: '\\u4f7f\\u7528\\u7535\\u8bdd\\u53f7\\u7801\\u7ee7\\u7eed',
+  value: '',
+  disabled: false,
+  getAttribute(name) {
+    if (name === 'type') return 'button';
+    return '';
+  },
+  getBoundingClientRect() {
+    return { width: 220, height: 44 };
+  },
+};
+
+const document = {
+  querySelectorAll(selector) {
+    if (selector === 'button, a, [role="button"], [role="link"]') {
+      return [phoneSignupButton];
+    }
+    return [];
+  },
+};
+
+${extractConst('SIGNUP_SWITCH_ACTION_PATTERN')}
+${extractConst('SIGNUP_PHONE_ACTION_PATTERN')}
+${extractConst('SIGNUP_SWITCH_TO_PHONE_PATTERN')}
+
+function isVisibleElement(el) {
+  return Boolean(el);
+}
+
+function isActionEnabled(el) {
+  return Boolean(el) && !el.disabled && el.getAttribute('aria-disabled') !== 'true';
+}
+
+function getActionText(el) {
+  return [el?.textContent, el?.value, el?.getAttribute?.('aria-label'), el?.getAttribute?.('title')]
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\\s+/g, ' ')
+    .trim();
+}
+
+${extractFunction('findSignupUsePhoneTrigger')}
+
+return {
+  run() {
+    return findSignupUsePhoneTrigger();
+  },
+};
+`)();
+
+  assert.equal(Boolean(api.run()), true);
+});
+
+test('findSignupUsePhoneTrigger recognizes Chinese phone signup action text', () => {
+  const api = new Function(`
+const phoneSignupButton = {
+  textContent: '\\u624b\\u673a\\u53f7\\u6ce8\\u518c',
+  value: '',
+  disabled: false,
+  getAttribute(name) {
+    if (name === 'type') return 'button';
+    return '';
+  },
+  getBoundingClientRect() {
+    return { width: 220, height: 44 };
+  },
+};
+
+const document = {
+  querySelectorAll(selector) {
+    if (selector === 'button, a, [role="button"], [role="link"]') {
+      return [phoneSignupButton];
+    }
+    return [];
+  },
+};
+
+${extractConst('SIGNUP_SWITCH_ACTION_PATTERN')}
+${extractConst('SIGNUP_PHONE_ACTION_PATTERN')}
+${extractConst('SIGNUP_SWITCH_TO_PHONE_PATTERN')}
+
+function isVisibleElement(el) {
+  return Boolean(el);
+}
+
+function isActionEnabled(el) {
+  return Boolean(el) && !el.disabled && el.getAttribute('aria-disabled') !== 'true';
+}
+
+function getActionText(el) {
+  return [el?.textContent, el?.value, el?.getAttribute?.('aria-label'), el?.getAttribute?.('title')]
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\\s+/g, ' ')
+    .trim();
+}
+
+${extractFunction('findSignupUsePhoneTrigger')}
+
+return {
+  run() {
+    return findSignupUsePhoneTrigger();
+  },
+};
+`)();
+
+  assert.equal(Boolean(api.run()), true);
+});
+
+test('inspectSignupEntryState treats username autocomplete input with switch-to-email action as phone entry', () => {
+  const api = new Function(`
+const phoneInput = {
+  kind: 'phone-username',
+  getAttribute(name) {
+    if (name === 'type') return 'text';
+    if (name === 'autocomplete') return 'username';
+    return '';
+  },
+};
+
+const switchToEmailButton = {
+  textContent: 'Continue using email address',
+  value: '',
+  disabled: false,
+  getAttribute(name) {
+    if (name === 'type') return 'button';
+    return '';
+  },
+  getBoundingClientRect() {
+    return { width: 220, height: 44 };
+  },
+};
+
+const document = {
+  readyState: 'complete',
+  body: {},
+  querySelector(selector) {
+    if (selector === SIGNUP_EMAIL_INPUT_SELECTOR) {
+      return phoneInput;
+    }
+    if (selector === SIGNUP_PHONE_INPUT_SELECTOR) {
+      return null;
+    }
+    return null;
+  },
+  querySelectorAll(selector) {
+    if (selector === 'input') {
+      return [phoneInput];
+    }
+    if (selector === 'button, a, [role="button"], [role="link"]') {
+      return [switchToEmailButton];
+    }
+    if (selector === 'a, button, [role="button"], [role="link"]') {
+      return [];
+    }
+    return [];
+  },
+};
+
+const location = {
+  href: 'https://chatgpt.com/create-account',
+};
+
+${extractConst('SIGNUP_ENTRY_TRIGGER_PATTERN')}
+${extractConst('SIGNUP_EMAIL_INPUT_SELECTOR')}
+${extractConst('SIGNUP_PHONE_INPUT_SELECTOR')}
+${extractConst('SIGNUP_SWITCH_TO_EMAIL_PATTERN')}
+${extractConst('SIGNUP_SWITCH_ACTION_PATTERN')}
+${extractConst('SIGNUP_EMAIL_ACTION_PATTERN')}
+${extractConst('SIGNUP_PHONE_ACTION_PATTERN')}
+${extractConst('SIGNUP_SWITCH_TO_PHONE_PATTERN')}
+${extractConst('SIGNUP_WORK_EMAIL_PATTERN')}
+
+function isVisibleElement(el) {
+  return Boolean(el);
+}
+
+function isActionEnabled(el) {
+  return Boolean(el) && !el.disabled && el.getAttribute('aria-disabled') !== 'true';
+}
+
+function getActionText(el) {
+  return [el?.textContent, el?.value, el?.getAttribute?.('aria-label'), el?.getAttribute?.('title')]
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\\s+/g, ' ')
+    .trim();
+}
+
+function getSignupPasswordInput() {
+  return null;
+}
+
+function isSignupPasswordPage() {
+  return false;
+}
+
+function getSignupPasswordSubmitButton() {
+  return null;
+}
+
+function findSignupEntryTrigger() {
+  return null;
+}
+
+function getSignupPasswordDisplayedEmail() {
+  return '';
+}
+
+function getSignupEmailContinueButton() {
+  return null;
+}
+
+${extractFunction('getSignupInputHints')}
+${extractFunction('isExplicitSignupEmailInput')}
+${extractFunction('isGenericSignupUsernameInput')}
+${extractFunction('isLikelySignupPhoneInput')}
+${extractFunction('getSignupEmailInput')}
+${extractFunction('getSignupPhoneInput')}
+${extractFunction('findSignupUseEmailTrigger')}
+${extractFunction('findSignupUsePhoneTrigger')}
+${extractFunction('inspectSignupEntryState')}
+
+return {
+  run() {
+    return inspectSignupEntryState();
+  },
+};
+`)();
+
+  const snapshot = api.run();
+
+  assert.equal(snapshot.state, 'phone_entry');
+  assert.equal(snapshot.phoneInput?.kind, 'phone-username');
+  assert.equal(Boolean(snapshot.switchToEmailTrigger), true);
+});
+
+test('waitForSignupPhoneEntryState switches from email mode and recognizes returned phone username input', async () => {
+  const api = new Function(`
+const logs = [];
+const clicks = [];
+let phase = 'email';
+let now = 0;
+
+const emailInput = {
+  kind: 'email',
+  getAttribute(name) {
+    if (name === 'type') return 'email';
+    return '';
+  },
+};
+
+const phoneInput = {
+  kind: 'phone-username',
+  getAttribute(name) {
+    if (name === 'type') return 'text';
+    if (name === 'autocomplete') return 'username';
+    return '';
+  },
+};
+
+const switchToPhoneButton = {
+  textContent: '\\u4f7f\\u7528\\u7535\\u8bdd\\u53f7\\u7801\\u7ee7\\u7eed',
+  value: '',
+  disabled: false,
+  getAttribute(name) {
+    if (name === 'type') return 'button';
+    return '';
+  },
+  getBoundingClientRect() {
+    return { width: 220, height: 44 };
+  },
+};
+
+const switchToEmailButton = {
+  textContent: 'Continue using email address',
+  value: '',
+  disabled: false,
+  getAttribute(name) {
+    if (name === 'type') return 'button';
+    return '';
+  },
+  getBoundingClientRect() {
+    return { width: 220, height: 44 };
+  },
+};
+
+const document = {
+  readyState: 'complete',
+  body: {},
+  querySelector(selector) {
+    if (selector === SIGNUP_EMAIL_INPUT_SELECTOR) {
+      return phase === 'email' ? emailInput : phoneInput;
+    }
+    if (selector === SIGNUP_PHONE_INPUT_SELECTOR) {
+      return null;
+    }
+    return null;
+  },
+  querySelectorAll(selector) {
+    if (selector === 'input') {
+      return [phase === 'email' ? emailInput : phoneInput];
+    }
+    if (selector === 'button, a, [role="button"], [role="link"]') {
+      return phase === 'email' ? [switchToPhoneButton] : [switchToEmailButton];
+    }
+    if (selector === 'a, button, [role="button"], [role="link"]') {
+      return [];
+    }
+    return [];
+  },
+};
+
+const location = {
+  href: 'https://chatgpt.com/create-account',
+};
+
+const Date = {
+  now() {
+    return now;
+  },
+};
+
+${extractConst('SIGNUP_ENTRY_TRIGGER_PATTERN')}
+${extractConst('SIGNUP_EMAIL_INPUT_SELECTOR')}
+${extractConst('SIGNUP_PHONE_INPUT_SELECTOR')}
+${extractConst('SIGNUP_SWITCH_TO_EMAIL_PATTERN')}
+${extractConst('SIGNUP_SWITCH_ACTION_PATTERN')}
+${extractConst('SIGNUP_EMAIL_ACTION_PATTERN')}
+${extractConst('SIGNUP_PHONE_ACTION_PATTERN')}
+${extractConst('SIGNUP_SWITCH_TO_PHONE_PATTERN')}
+${extractConst('SIGNUP_MORE_OPTIONS_PATTERN')}
+${extractConst('SIGNUP_WORK_EMAIL_PATTERN')}
+
+function isVisibleElement(el) {
+  return Boolean(el);
+}
+
+function isActionEnabled(el) {
+  return Boolean(el) && !el.disabled && el.getAttribute('aria-disabled') !== 'true';
+}
+
+function getActionText(el) {
+  return [el?.textContent, el?.value, el?.getAttribute?.('aria-label'), el?.getAttribute?.('title')]
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\\s+/g, ' ')
+    .trim();
+}
+
+function getSignupPasswordInput() {
+  return null;
+}
+
+function isSignupPasswordPage() {
+  return false;
+}
+
+function getSignupPasswordSubmitButton() {
+  return null;
+}
+
+function findSignupEntryTrigger() {
+  return null;
+}
+
+function getSignupPasswordDisplayedEmail() {
+  return '';
+}
+
+function getSignupEmailContinueButton() {
+  return null;
+}
+
+function throwIfStopped() {}
+
+function log(message, level = 'info') {
+  logs.push({ message, level });
+}
+
+async function humanPause() {}
+
+function simulateClick(target) {
+  clicks.push(getActionText(target));
+  if (target === switchToPhoneButton) {
+    phase = 'phone';
+  }
+}
+
+async function sleep(ms) {
+  now += ms;
+}
+
+function getSignupEntryStateSummary(snapshot) {
+  return { state: snapshot?.state || 'unknown' };
+}
+
+function getSignupEntryDiagnostics() {
+  return { phase };
+}
+
+${extractFunction('getSignupInputHints')}
+${extractFunction('isExplicitSignupEmailInput')}
+${extractFunction('isGenericSignupUsernameInput')}
+${extractFunction('isLikelySignupPhoneInput')}
+${extractFunction('getSignupEmailInput')}
+${extractFunction('getSignupPhoneInput')}
+${extractFunction('findSignupUseEmailTrigger')}
+${extractFunction('findSignupUsePhoneTrigger')}
+${extractFunction('findSignupMoreOptionsTrigger')}
+${extractFunction('inspectSignupEntryState')}
+${extractFunction('isDocumentReadyForAction')}
+${extractFunction('isElementConnectedToDocument')}
+${extractFunction('waitForStableButtonRect')}
+${extractFunction('waitForActionReady')}
+${extractFunction('clickActionWhenReady')}
+${extractFunction('waitForSignupPhoneEntryState')}
+
+return {
+  async run() {
+    return waitForSignupPhoneEntryState({ timeout: 5000, step: 2 });
+  },
+  getClicks() {
+    return clicks.slice();
+  },
+  getLogs() {
+    return logs.slice();
+  },
+};
+`)();
+
+  const snapshot = await api.run();
+
+  assert.equal(snapshot.state, 'phone_entry');
+  assert.equal(snapshot.phoneInput?.kind, 'phone-username');
+  assert.deepEqual(api.getClicks(), ['使用电话号码继续']);
 });

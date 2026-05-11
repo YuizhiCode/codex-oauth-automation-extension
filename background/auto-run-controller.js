@@ -98,6 +98,18 @@
         .join('；');
     }
 
+    function isPhoneSignupState(state = {}) {
+      const resolvedMethod = String(state?.resolvedSignupMethod || '').trim().toLowerCase();
+      if (resolvedMethod === 'phone') {
+        return true;
+      }
+      const configuredMethod = String(state?.signupMethod || '').trim().toLowerCase();
+      return configuredMethod === 'phone'
+        && Boolean(state?.phoneVerificationEnabled)
+        && !Boolean(state?.plusModeEnabled)
+        && !Boolean(state?.contributionMode);
+    }
+
     function shouldKeepCustomMailProviderPoolEmail(state = {}) {
       return String(state?.mailProvider || '').trim().toLowerCase() === 'custom'
         && Array.isArray(state?.customMailProviderPool)
@@ -350,6 +362,7 @@
           roundSummary.attempts = attemptRun;
           let startStep = 1;
           let useExistingProgress = false;
+          let phoneSignupForRound = false;
 
           if (reuseExistingProgress) {
             let currentState = await getState();
@@ -375,6 +388,7 @@
               vpsUrl: prevState.vpsUrl,
               vpsPassword: prevState.vpsPassword,
               customPassword: prevState.customPassword,
+              signupMethod: prevState.signupMethod,
               plusModeEnabled: prevState.plusModeEnabled,
               gptOnlyModeEnabled: prevState.gptOnlyModeEnabled,
               paypalEmail: prevState.paypalEmail,
@@ -384,6 +398,15 @@
               autoRunDelayEnabled: prevState.autoRunDelayEnabled,
               autoRunDelayMinutes: prevState.autoRunDelayMinutes,
               autoStepDelaySeconds: prevState.autoStepDelaySeconds,
+              phoneVerificationEnabled: prevState.phoneVerificationEnabled,
+              phoneSmsProvider: prevState.phoneSmsProvider,
+              phoneSmsProviderOrder: prevState.phoneSmsProviderOrder,
+              verificationResendCount: prevState.verificationResendCount,
+              phoneVerificationReplacementLimit: prevState.phoneVerificationReplacementLimit,
+              phoneCodeWaitSeconds: prevState.phoneCodeWaitSeconds,
+              phoneCodeTimeoutWindows: prevState.phoneCodeTimeoutWindows,
+              phoneCodePollIntervalSeconds: prevState.phoneCodePollIntervalSeconds,
+              phoneCodePollMaxRounds: prevState.phoneCodePollMaxRounds,
               mailProvider: prevState.mailProvider,
               emailGenerator: prevState.emailGenerator,
               gmailBaseEmail: prevState.gmailBaseEmail,
@@ -395,6 +418,23 @@
               cloudflareDomain: prevState.cloudflareDomain,
               cloudflareDomains: prevState.cloudflareDomains,
               reusablePhoneActivation: prevState.reusablePhoneActivation,
+              heroSmsApiKey: prevState.heroSmsApiKey,
+              fiveSimApiKey: prevState.fiveSimApiKey,
+              fiveSimBaseUrl: prevState.fiveSimBaseUrl,
+              fiveSimCountryOrder: prevState.fiveSimCountryOrder,
+              fiveSimOperator: prevState.fiveSimOperator,
+              fiveSimProduct: prevState.fiveSimProduct,
+              nexSmsApiKey: prevState.nexSmsApiKey,
+              nexSmsBaseUrl: prevState.nexSmsBaseUrl,
+              nexSmsCountryOrder: prevState.nexSmsCountryOrder,
+              nexSmsServiceCode: prevState.nexSmsServiceCode,
+              heroSmsReuseEnabled: prevState.heroSmsReuseEnabled,
+              heroSmsAcquirePriority: prevState.heroSmsAcquirePriority,
+              heroSmsMinPrice: prevState.heroSmsMinPrice,
+              heroSmsMaxPrice: prevState.heroSmsMaxPrice,
+              heroSmsCountryId: prevState.heroSmsCountryId,
+              heroSmsCountryLabel: prevState.heroSmsCountryLabel,
+              heroSmsCountryFallback: prevState.heroSmsCountryFallback,
               autoRunRoundSummaries: serializeAutoRunRoundSummaries(totalRuns, roundSummaries),
               autoRunSessionId: sessionId,
               tabRegistry: {},
@@ -405,9 +445,11 @@
             await setState(keepSettings);
             deps.chrome.runtime.sendMessage({ type: 'AUTO_RUN_RESET' }).catch(() => { });
             await sleepWithStop(500);
+            phoneSignupForRound = isPhoneSignupState(await getState());
 
             if (
               startStep === 1
+              && !phoneSignupForRound
               && totalRuns === 1
               && targetRun === 1
               && attemptRun === 1
@@ -432,6 +474,7 @@
               autoRunRoundSummaries: serializeAutoRunRoundSummaries(totalRuns, roundSummaries),
               ...getAutoRunStatusPayload('running', { currentRun: targetRun, totalRuns, attemptRun, sessionId }),
             });
+            phoneSignupForRound = isPhoneSignupState(await getState());
           }
 
           if (forceFreshTabsNextRun) {
@@ -463,7 +506,12 @@
               sessionId,
             });
 
-            if (!useExistingProgress && startStep === 1 && typeof ensureHotmailMailboxReadyForAutoRunRound === 'function') {
+            if (
+              !phoneSignupForRound
+              && !useExistingProgress
+              && startStep === 1
+              && typeof ensureHotmailMailboxReadyForAutoRunRound === 'function'
+            ) {
               await ensureHotmailMailboxReadyForAutoRunRound({
                 targetRun,
                 totalRuns,

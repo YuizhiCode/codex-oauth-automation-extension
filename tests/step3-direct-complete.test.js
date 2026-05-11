@@ -61,8 +61,25 @@ const scheduled = [];
 const snapshot = {
   state: 'password_page',
   passwordInput: { value: '', hidden: false },
-  submitButton: { textContent: 'Continue', hidden: false },
+  submitButton: {
+    textContent: 'Continue',
+    hidden: false,
+    disabled: false,
+    getAttribute() {
+      return '';
+    },
+    scrollIntoView() {},
+    focus() {},
+    getBoundingClientRect() {
+      return { left: 12, top: 20, width: 220, height: 44 };
+    },
+  },
   displayedEmail: 'user@example.com',
+};
+
+const document = {
+  readyState: 'complete',
+  body: {},
 };
 
 const window = {
@@ -115,7 +132,24 @@ function simulateClick(target) {
   clicks.push(target.textContent || 'button');
 }
 
+function isVisibleElement(el) {
+  return Boolean(el) && !el.hidden;
+}
+
+function isActionEnabled(el) {
+  return Boolean(el) && !el.disabled && el.getAttribute?.('aria-disabled') !== 'true';
+}
+
+function getLoginSubmitButton() {
+  return null;
+}
+
 ${extractFunction('step3_fillEmailPassword')}
+${extractFunction('isDocumentReadyForAction')}
+${extractFunction('isElementConnectedToDocument')}
+${extractFunction('waitForStableButtonRect')}
+${extractFunction('waitForActionReady')}
+${extractFunction('clickActionWhenReady')}
 
 return {
   async run(payload) {
