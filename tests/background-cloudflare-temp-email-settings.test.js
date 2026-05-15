@@ -68,6 +68,7 @@ const PERSISTED_SETTING_DEFAULTS = {
   autoDeleteUsedIcloudAlias: false,
   accountRunHistoryTextEnabled: false,
   cloudflareTempEmailUseRandomSubdomain: false,
+  cloudflareTempEmailCustomSubdomainPrefix: '',
   cloudflareTempEmailDomain: '',
   cloudflareTempEmailDomains: [],
 };
@@ -90,7 +91,7 @@ function normalizeCloudflareDomain(value) { return String(value || '').trim().to
 function normalizeCloudflareDomains(value) { return Array.isArray(value) ? value.map((item) => String(item || '').trim().toLowerCase()).filter(Boolean) : []; }
 function normalizeCloudflareTempEmailBaseUrl(value) { return String(value || '').trim(); }
 function normalizeCloudflareTempEmailAddress(value = '') { return String(value || '').trim().toLowerCase(); }
-function normalizeCloudflareTempEmailDomain(value) { return String(value || '').trim().toLowerCase(); }
+function normalizeCloudflareTempEmailDomain(value) { return String(value || '').trim().toLowerCase().replace(/^\\.+|\\.+$/g, ''); }
 function normalizeCloudflareTempEmailDomains(value) {
   const seen = new Set();
   const domains = [];
@@ -114,13 +115,16 @@ return {
   `)();
 
   assert.equal(api.normalizePersistentSettingValue('cloudflareTempEmailUseRandomSubdomain', 1), true);
+  assert.equal(api.normalizePersistentSettingValue('cloudflareTempEmailCustomSubdomainPrefix', '.Edu.'), 'edu');
 
   const payload = api.buildPersistentSettingsPayload({
     cloudflareTempEmailUseRandomSubdomain: true,
+    cloudflareTempEmailCustomSubdomainPrefix: 'edu',
     cloudflareTempEmailDomain: 'mail.example.com',
     cloudflareTempEmailDomains: ['mail.example.com', 'alt.example.com'],
   });
   assert.equal(payload.cloudflareTempEmailUseRandomSubdomain, true);
+  assert.equal(payload.cloudflareTempEmailCustomSubdomainPrefix, 'edu');
   assert.equal(payload.cloudflareTempEmailDomain, 'mail.example.com');
   assert.deepEqual(payload.cloudflareTempEmailDomains, ['mail.example.com', 'alt.example.com']);
 
@@ -130,6 +134,7 @@ return {
     cloudflareTempEmailCustomAuth: 'custom-secret',
     cloudflareTempEmailReceiveMailbox: 'Forward@Example.com',
     cloudflareTempEmailUseRandomSubdomain: true,
+    cloudflareTempEmailCustomSubdomainPrefix: 'edu',
     cloudflareTempEmailDomain: 'mail.example.com',
     cloudflareTempEmailDomains: ['mail.example.com'],
   });
@@ -139,6 +144,7 @@ return {
     customAuth: 'custom-secret',
     receiveMailbox: 'forward@example.com',
     useRandomSubdomain: true,
+    customSubdomainPrefix: 'edu',
     domain: 'mail.example.com',
     domains: ['mail.example.com'],
   });

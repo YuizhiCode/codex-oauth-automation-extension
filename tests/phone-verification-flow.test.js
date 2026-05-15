@@ -103,6 +103,7 @@ test('signup phone helper clears stale phone state when activation record is mis
     signupPhoneNumber: '',
     signupPhoneActivation: null,
     signupPhoneCompletedActivation: null,
+    signupPhoneEntryMode: null,
     signupPhoneVerificationRequestedAt: null,
     signupPhoneVerificationPurpose: '',
     currentPhoneVerificationCode: '',
@@ -110,6 +111,339 @@ test('signup phone helper clears stale phone state when activation record is mis
     accountIdentifierType: null,
   });
   assert.equal(logs.some((entry) => /重新执行步骤 2 时将重新获取手机号/.test(entry.message)), true);
+});
+
+test('signup phone helper allows manual phone verification confirmation without activation record', async () => {
+  const logs = [];
+  const bypassRequests = [];
+  const broadcasts = [];
+  let currentState = {
+    signupPhoneNumber: '+446700000002',
+    signupPhoneActivation: null,
+    signupPhoneEntryMode: 'manual',
+    signupPhoneVerificationRequestedAt: 123,
+    signupPhoneVerificationPurpose: 'signup',
+    currentPhoneVerificationCode: '111111',
+    accountIdentifierType: 'phone',
+    accountIdentifier: '+446700000002',
+  };
+
+  const helpers = api.createPhoneVerificationHelpers({
+    addLog: async (message, level = 'info') => {
+      logs.push({ message, level });
+    },
+    broadcastDataUpdate: (updates) => {
+      broadcasts.push(updates);
+    },
+    confirmCustomVerificationStepBypassRequest: async (step, options = {}) => {
+      bypassRequests.push({ step, options });
+      return { confirmed: true };
+    },
+    ensureStep8SignupPageReady: async () => {},
+    fetchImpl: async () => {
+      throw new Error('network should not be used for manual phone confirmation');
+    },
+    getState: async () => currentState,
+    sendToContentScriptResilient: async () => {
+      throw new Error('content script should not be used for manual phone confirmation');
+    },
+    setState: async (updates) => {
+      currentState = { ...currentState, ...updates };
+    },
+    sleepWithStop: async () => {},
+    throwIfStopped: () => {},
+  });
+
+  const result = await helpers.completeSignupPhoneVerificationFlow(77, { state: currentState });
+
+  assert.deepStrictEqual(result, { manualConfirmation: true, code: '' });
+  assert.deepStrictEqual(bypassRequests, [
+    {
+      step: 4,
+      options: { context: 'phone' },
+    },
+  ]);
+  assert.equal(currentState.signupPhoneNumber, '+446700000002');
+  assert.equal(currentState.signupPhoneActivation, null);
+  assert.equal(currentState.signupPhoneEntryMode, 'manual');
+  assert.equal(currentState.signupPhoneVerificationPurpose, '');
+  assert.equal(currentState.currentPhoneVerificationCode, '');
+  assert.equal(currentState.accountIdentifier, '+446700000002');
+  assert.equal(logs.some((entry) => /手动手机号模式/.test(entry.message)), true);
+  assert.deepStrictEqual(broadcasts.at(0), {
+    signupPhoneNumber: '+446700000002',
+    signupPhoneActivation: null,
+    signupPhoneEntryMode: 'manual',
+    signupPhoneVerificationRequestedAt: null,
+    signupPhoneVerificationPurpose: 'signup',
+    currentPhoneVerificationCode: '',
+    accountIdentifierType: 'phone',
+    accountIdentifier: '+446700000002',
+  });
+});
+
+test('signup phone helper recovers HeroSMS activation from phone pool number without plus sign', async () => {
+  const logs = [];
+  const requests = [];
+  const contentMessages = [];
+  const statusActions = [];
+  let getStatusCount = 0;
+  let currentState = {
+    heroSmsApiKey: 'demo-key',
+    heroSmsCountryId: 151,
+    heroSmsCountryLabel: 'Chile',
+    phoneCodeWaitSeconds: 15,
+    phoneCodeTimeoutWindows: 1,
+    phoneCodePollIntervalSeconds: 1,
+    phoneCodePollMaxRounds: 2,
+    signupPhoneNumber: '56977836015',
+    signupPhoneActivation: null,
+    signupPhoneEntryMode: 'pool',
+    signupPhoneVerificationRequestedAt: 123,
+    signupPhoneVerificationPurpose: 'signup',
+    currentPhoneVerificationCode: '111111',
+    accountIdentifierType: 'phone',
+    accountIdentifier: '56977836015',
+  };
+
+  const helpers = api.createPhoneVerificationHelpers({
+    addLog: async (message, level = 'info') => {
+      logs.push({ message, level });
+    },
+    ensureStep8SignupPageReady: async () => {},
+    fetchImpl: async (url) => {
+      const parsedUrl = new URL(url);
+      const action = parsedUrl.searchParams.get('action');
+      requests.push({ action, id: parsedUrl.searchParams.get('id') });
+      if (action === 'getActiveActivations') {
+        return {
+          ok: true,
+          text: async () => JSON.stringify({
+            status: 'success',
+            data: [
+              {
+                activationId: '380646967',
+                serviceCode: 'dr',
+                phoneNumber: '56977836015',
+                activationStatus: '4',
+                countryCode: '151',
+              },
+            ],
+          }),
+        };
+      }
+      if (action === 'getStatus') {
+        getStatusCount += 1;
+        return {
+          ok: true,
+          text: async () => (getStatusCount === 1 ? 'STATUS_WAIT_CODE' : 'STATUS_OK:123456'),
+        };
+      }
+      if (action === 'setStatus') {
+        statusActions.push(parsedUrl.searchParams.get('status'));
+        return {
+          ok: true,
+          text: async () => 'ACCESS_READY',
+        };
+      }
+      throw new Error(`Unexpected HeroSMS action: ${action}`);
+    },
+    getOAuthFlowStepTimeoutMs: async (fallback) => fallback,
+    getState: async () => currentState,
+    sendToContentScriptResilient: async (_source, message) => {
+      contentMessages.push(message);
+      if (message.type === 'RESEND_VERIFICATION_CODE') {
+        return { resent: true };
+      }
+      if (message.type === 'SUBMIT_PHONE_VERIFICATION_CODE') {
+        return { success: true };
+      }
+      throw new Error(`Unexpected content-script message: ${message.type}`);
+    },
+    setState: async (updates) => {
+      currentState = { ...currentState, ...updates };
+    },
+    sleepWithStop: async () => {},
+    throwIfStopped: () => {},
+  });
+
+  const result = await helpers.completeSignupPhoneVerificationFlow(77, { state: currentState });
+
+  assert.deepStrictEqual(result, { success: true, code: '123456' });
+  assert.equal(requests[0].action, 'getActiveActivations');
+  assert.equal(requests[1].action, 'getStatus');
+  assert.equal(requests[1].id, '380646967');
+  assert.equal(getStatusCount, 2);
+  assert.deepStrictEqual(statusActions, ['6']);
+  assert.deepStrictEqual(contentMessages.map((message) => message.type), [
+    'SUBMIT_PHONE_VERIFICATION_CODE',
+  ]);
+  assert.equal(currentState.signupPhoneActivation, null);
+  assert.equal(currentState.signupPhoneEntryMode, 'pool');
+  assert.equal(currentState.signupPhoneCompletedActivation.phoneNumber, '56977836015');
+  assert.equal(logs.some((entry) => /恢复手机号 56977836015 的 activationId 380646967/.test(entry.message)), true);
+});
+
+test('login phone helper allows manual phone verification confirmation without activation record', async () => {
+  const logs = [];
+  const bypassRequests = [];
+  let currentState = {
+    signupPhoneNumber: '+446700000002',
+    signupPhoneActivation: null,
+    signupPhoneCompletedActivation: null,
+    signupPhoneEntryMode: 'manual',
+    signupPhoneVerificationRequestedAt: 123,
+    signupPhoneVerificationPurpose: 'login',
+    currentPhoneVerificationCode: '222222',
+    accountIdentifierType: 'phone',
+    accountIdentifier: '+446700000002',
+  };
+
+  const helpers = api.createPhoneVerificationHelpers({
+    addLog: async (message, level = 'info') => {
+      logs.push({ message, level });
+    },
+    confirmCustomVerificationStepBypassRequest: async (step, options = {}) => {
+      bypassRequests.push({ step, options });
+      return { confirmed: true };
+    },
+    ensureStep8SignupPageReady: async () => {},
+    fetchImpl: async () => {
+      throw new Error('network should not be used for manual phone confirmation');
+    },
+    getState: async () => currentState,
+    sendToContentScriptResilient: async () => {
+      throw new Error('content script should not be used for manual phone confirmation');
+    },
+    setState: async (updates) => {
+      currentState = { ...currentState, ...updates };
+    },
+    sleepWithStop: async () => {},
+    throwIfStopped: () => {},
+  });
+
+  const result = await helpers.completeLoginPhoneVerificationFlow(77, {
+    state: currentState,
+    visibleStep: 8,
+  });
+
+  assert.deepStrictEqual(result, { manualConfirmation: true, code: '' });
+  assert.deepStrictEqual(bypassRequests, [
+    {
+      step: 8,
+      options: { context: 'phone' },
+    },
+  ]);
+  assert.equal(currentState.signupPhoneNumber, '+446700000002');
+  assert.equal(currentState.signupPhoneEntryMode, 'manual');
+  assert.equal(currentState.signupPhoneVerificationPurpose, '');
+  assert.equal(currentState.currentPhoneVerificationCode, '');
+  assert.equal(logs.some((entry) => /登录手机验证码/.test(entry.message)), true);
+});
+
+test('login phone helper recovers HeroSMS activation from phone pool number without plus sign', async () => {
+  const logs = [];
+  const requests = [];
+  const contentMessages = [];
+  const statusActions = [];
+  let getStatusCount = 0;
+  let currentState = {
+    heroSmsApiKey: 'demo-key',
+    heroSmsCountryId: 151,
+    heroSmsCountryLabel: 'Chile',
+    phoneCodeWaitSeconds: 15,
+    phoneCodeTimeoutWindows: 1,
+    phoneCodePollIntervalSeconds: 1,
+    phoneCodePollMaxRounds: 2,
+    signupPhoneNumber: '56977836015',
+    signupPhoneActivation: null,
+    signupPhoneCompletedActivation: null,
+    signupPhoneEntryMode: 'pool',
+    signupPhoneVerificationRequestedAt: 123,
+    signupPhoneVerificationPurpose: 'login',
+    currentPhoneVerificationCode: '222222',
+    accountIdentifierType: 'phone',
+    accountIdentifier: '56977836015',
+  };
+
+  const helpers = api.createPhoneVerificationHelpers({
+    addLog: async (message, level = 'info') => {
+      logs.push({ message, level });
+    },
+    ensureStep8SignupPageReady: async () => {},
+    fetchImpl: async (url) => {
+      const parsedUrl = new URL(url);
+      const action = parsedUrl.searchParams.get('action');
+      requests.push({ action, id: parsedUrl.searchParams.get('id') });
+      if (action === 'getActiveActivations') {
+        return {
+          ok: true,
+          text: async () => JSON.stringify({
+            status: 'success',
+            data: [
+              {
+                activationId: '380646967',
+                serviceCode: 'dr',
+                phoneNumber: '56977836015',
+                activationStatus: '4',
+                countryCode: '151',
+              },
+            ],
+          }),
+        };
+      }
+      if (action === 'getStatus') {
+        getStatusCount += 1;
+        return {
+          ok: true,
+          text: async () => (getStatusCount === 1 ? 'STATUS_WAIT_CODE' : 'STATUS_OK:654321'),
+        };
+      }
+      if (action === 'setStatus') {
+        statusActions.push(parsedUrl.searchParams.get('status'));
+        return {
+          ok: true,
+          text: async () => 'ACCESS_READY',
+        };
+      }
+      throw new Error(`Unexpected HeroSMS action: ${action}`);
+    },
+    getOAuthFlowStepTimeoutMs: async (fallback) => fallback,
+    getState: async () => currentState,
+    sendToContentScriptResilient: async (_source, message) => {
+      contentMessages.push(message);
+      if (message.type === 'RESEND_VERIFICATION_CODE') {
+        return { resent: true };
+      }
+      if (message.type === 'SUBMIT_PHONE_VERIFICATION_CODE') {
+        return { success: true };
+      }
+      throw new Error(`Unexpected content-script message: ${message.type}`);
+    },
+    setState: async (updates) => {
+      currentState = { ...currentState, ...updates };
+    },
+    sleepWithStop: async () => {},
+    throwIfStopped: () => {},
+  });
+
+  const result = await helpers.completeLoginPhoneVerificationFlow(77, {
+    state: currentState,
+    visibleStep: 8,
+  });
+
+  assert.deepStrictEqual(result, { success: true, code: '654321' });
+  assert.equal(requests[0].action, 'getActiveActivations');
+  assert.equal(requests[1].action, 'getStatus');
+  assert.equal(requests[1].id, '380646967');
+  assert.equal(getStatusCount, 2);
+  assert.deepStrictEqual(statusActions, ['6']);
+  assert.deepStrictEqual(contentMessages.map((message) => message.type), [
+    'SUBMIT_PHONE_VERIFICATION_CODE',
+  ]);
+  assert.equal(currentState.signupPhoneEntryMode, 'pool');
+  assert.equal(currentState.signupPhoneCompletedActivation.phoneNumber, '56977836015');
+  assert.equal(logs.some((entry) => /恢复手机号 56977836015 的 activationId 380646967/.test(entry.message)), true);
 });
 
 test('signup phone helper broadcasts the acquired registration phone number', async () => {
@@ -159,11 +493,75 @@ test('signup phone helper broadcasts the acquired registration phone number', as
   assert.deepStrictEqual(broadcasts.at(-1), {
     signupPhoneNumber: '66959916439',
     signupPhoneActivation: activation,
+    signupPhoneEntryMode: 'auto',
     signupPhoneVerificationRequestedAt: null,
     signupPhoneVerificationPurpose: 'signup',
     accountIdentifierType: 'phone',
     accountIdentifier: '66959916439',
   });
+});
+
+test('signup phone helper prefers HeroSMS active activations only when phone pool mode requests it', async () => {
+  const requests = [];
+  let currentState = {
+    heroSmsApiKey: 'demo-key',
+    heroSmsCountryId: 151,
+    heroSmsCountryLabel: 'Chile',
+  };
+
+  const helpers = api.createPhoneVerificationHelpers({
+    addLog: async () => {},
+    ensureStep8SignupPageReady: async () => {},
+    fetchImpl: async (url) => {
+      const parsedUrl = new URL(url);
+      requests.push(parsedUrl);
+      const action = parsedUrl.searchParams.get('action');
+      if (action === 'getActiveActivations') {
+        return {
+          ok: true,
+          text: async () => JSON.stringify({
+            status: 'success',
+            data: [
+              {
+                activationId: '380646967',
+                serviceCode: 'dr',
+                phoneNumber: '56977836015',
+                activationStatus: '4',
+                countryCode: '151',
+              },
+            ],
+          }),
+        };
+      }
+      throw new Error(`Unexpected HeroSMS action: ${action}`);
+    },
+    getState: async () => currentState,
+    sendToContentScriptResilient: async () => ({}),
+    setState: async (updates) => {
+      currentState = { ...currentState, ...updates };
+    },
+    sleepWithStop: async () => {},
+    throwIfStopped: () => {},
+  });
+
+  const activation = await helpers.prepareSignupPhoneActivation(currentState, {
+    preferActiveActivationPool: true,
+  });
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].searchParams.get('action'), 'getActiveActivations');
+  assert.deepStrictEqual(activation, {
+    activationId: '380646967',
+    phoneNumber: '56977836015',
+    provider: 'hero-sms',
+    serviceCode: 'dr',
+    countryId: 151,
+    countryLabel: 'Chile',
+    successfulUses: 0,
+    maxUses: 3,
+    statusAction: 'getStatus',
+  });
+  assert.equal(currentState.signupPhoneEntryMode, 'auto');
 });
 
 test('phone verification helper requests a 5sim number with configured country/operator/product', async () => {
@@ -463,7 +861,7 @@ test('signup phone helper clears auto-acquired phone identity after timeout so s
 
   await assert.rejects(
     () => helpers.completeSignupPhoneVerificationFlow(77, { state: currentState }),
-    /Timed out waiting for the phone verification code\. Last HeroSMS status: STATUS_WAIT_CODE/
+    /等待手机验证码超时\. Last HeroSMS status: STATUS_WAIT_CODE/
   );
 
   assert.deepStrictEqual(statusActions, ['8']);
@@ -1106,7 +1504,7 @@ test('phone verification helper does not request a second HeroSMS number in the 
       heroSmsCountryId: 16,
       heroSmsActivationRetryRounds: 1,
     }),
-    /HeroSMS no numbers available/i
+    /HeroSMS.*NO_NUMBERS/i
   );
 
   assert.equal(requests.length, 4);
@@ -1684,6 +2082,66 @@ test('phone verification helper selects the nearest returned price tier at or ab
     'serviceCountRent:',
     'getNumber:0.0518',
   ]);
+});
+
+test('phone verification helper logs HeroSMS getNumber request parameters before acquiring a number', async () => {
+  const logs = [];
+  const helpers = api.createPhoneVerificationHelpers({
+    addLog: async (message, level = 'info') => {
+      logs.push({ message, level });
+    },
+    ensureStep8SignupPageReady: async () => {},
+    fetchImpl: async (url) => {
+      const parsedUrl = new URL(url);
+      const action = parsedUrl.searchParams.get('action');
+      const maxPrice = parsedUrl.searchParams.get('maxPrice');
+      if (action === 'serviceCountRent') {
+        return {
+          ok: true,
+          text: async () => JSON.stringify({
+            52: {
+              dr: [
+                { price: 0.025, count: 100 },
+                { price: 0.0263, count: 100 },
+                { price: 0.028, count: 100 },
+              ],
+            },
+          }),
+        };
+      }
+      if (action === 'getNumber' && maxPrice === '0.0263') {
+        return {
+          ok: true,
+          text: async () => 'ACCESS_NUMBER:262630:66950002630',
+        };
+      }
+      throw new Error(`Unexpected HeroSMS action: ${action} @ ${maxPrice || 'no-price'}`);
+    },
+    getState: async () => ({ heroSmsApiKey: 'demo-key' }),
+    sendToContentScriptResilient: async () => ({}),
+    setState: async () => {},
+    sleepWithStop: async () => {},
+    throwIfStopped: () => {},
+  });
+
+  const activation = await helpers.requestPhoneActivation({
+    heroSmsApiKey: 'demo-key',
+    heroSmsMinPrice: '0.026',
+  });
+
+  assert.equal(activation.activationId, '262630');
+  assert.ok(
+    logs.some((entry) => (
+      entry.level === 'info'
+      && /HeroSMS getNumber request params/i.test(entry.message)
+      && /action=getNumber/.test(entry.message)
+      && /service=dr/.test(entry.message)
+      && /country=52/.test(entry.message)
+      && /maxPrice=0\.0263/.test(entry.message)
+      && /fixedPrice=true/.test(entry.message)
+    )),
+    'expected getNumber request params to be logged before the request'
+  );
 });
 
 test('phone verification helper reads alternate HeroSMS price fields above configured min price', async () => {

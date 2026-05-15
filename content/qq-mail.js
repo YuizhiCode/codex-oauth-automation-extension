@@ -68,12 +68,12 @@ async function handlePollEmail(step, payload) {
     throw new Error('邮件列表未加载完成，请确认 QQ 邮箱已打开收件箱。');
   }
 
-  // Step 1: Snapshot existing mail IDs BEFORE we start waiting for new email
+  // Step 1: 在开始等待新电子邮件之前，快照现有邮件ID
   const existingMailIds = getCurrentMailIds();
   log(`步骤 ${step}：已将当前 ${existingMailIds.size} 封邮件标记为旧邮件快照`);
 
-  // Fallback after just 3 attempts (~10s). In practice, the email is usually
-  // already in the list but has the same mailid (page was already open).
+  // 仅3次尝试（约10秒）后就回落。在实践中，电子邮件通常是
+  // 已在列表中，但具有相同的mailid（页面已打开）。
   const FALLBACK_AFTER = 3;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {

@@ -5,6 +5,7 @@
     const {
       addLog,
       broadcastDataUpdate = null,
+      confirmCustomVerificationStepBypassRequest = null,
       ensureStep8SignupPageReady,
       fetchImpl = (...args) => fetch(...args),
       getOAuthFlowStepTimeoutMs,
@@ -227,6 +228,20 @@
 
     function normalizeUseCount(value) {
       return Math.max(0, Math.floor(Number(value) || 0));
+    }
+
+    function normalizeSignupPhoneEntryMode(value = '') {
+      const normalized = String(value || '').trim().toLowerCase();
+      if (normalized === 'manual') {
+        return 'manual';
+      }
+      if (normalized === 'pool') {
+        return 'pool';
+      }
+      if (normalized === 'auto') {
+        return 'auto';
+      }
+      return '';
     }
 
     function normalizePhoneReplacementLimit(value) {
@@ -624,7 +639,7 @@
 
     function buildPhoneCodeTimeoutError(lastResponse = '') {
       const suffix = lastResponse ? ` Last HeroSMS status: ${lastResponse}` : '';
-      return new Error(`${PHONE_CODE_TIMEOUT_ERROR_PREFIX}Timed out waiting for the phone verification code.${suffix}`);
+      return new Error(`${PHONE_CODE_TIMEOUT_ERROR_PREFIX}等待手机验证码超时.${suffix}`);
     }
 
     function isPhoneCodeTimeoutError(error) {
@@ -654,7 +669,7 @@
       if (!message.startsWith(PHONE_CODE_TIMEOUT_ERROR_PREFIX)) {
         return error;
       }
-      return new Error(message.slice(PHONE_CODE_TIMEOUT_ERROR_PREFIX.length).trim() || 'Timed out waiting for the phone verification code.');
+      return new Error(message.slice(PHONE_CODE_TIMEOUT_ERROR_PREFIX.length).trim() || '等待手机验证码超时.');
     }
 
     function sanitizePhoneRestartStep7Error(error) {
@@ -664,7 +679,7 @@
       }
       return new Error(
         message.slice(PHONE_RESTART_STEP7_ERROR_PREFIX.length).trim()
-        || 'Phone verification could not receive an SMS after resend. Restart step 7 with a new number.'
+        || '重新发送后，电话验证无法接收短信。用新数字重新开始步骤7.'
       );
     }
 
@@ -919,6 +934,166 @@
 
     function resolveActivationStatusAction(activation) {
       return activation?.statusAction === 'getStatusV2' ? 'getStatusV2' : 'getStatus';
+    }
+
+    function normalizePhoneNumberDigits(value = '') {
+      return String(value || '').replace(/[^\d]/g, '');
+    }
+
+    function buildHeroSmsActivationFromLookupRecord(record, fallback = {}) {
+      if (!record || typeof record !== 'object' || Array.isArray(record)) {
+        return null;
+      }
+      const activationId = String(record.activationId ?? record.id ?? '').trim();
+      const phoneNumber = String(record.phoneNumber ?? record.phone ?? record.number ?? '').trim();
+      if (!activationId || !phoneNumber) {
+        return null;
+      }
+      const normalizedFallback = normalizeActivationFallback({
+        provider: PHONE_SMS_PROVIDER_HERO,
+        serviceCode: fallback?.serviceCode || HERO_SMS_SERVICE_CODE,
+        countryId: fallback?.countryId ?? HERO_SMS_COUNTRY_ID,
+        countryLabel: fallback?.countryLabel || '',
+        statusAction: fallback?.statusAction || 'getStatus',
+        successfulUses: fallback?.successfulUses,
+        maxUses: fallback?.maxUses,
+      }) || {};
+      return normalizeActivation({
+        activationId,
+        phoneNumber,
+        provider: PHONE_SMS_PROVIDER_HERO,
+        serviceCode: String(record.serviceCode ?? record.service ?? normalizedFallback.serviceCode ?? HERO_SMS_SERVICE_CODE).trim(),
+        countryId: record.countryId ?? record.countryCode ?? record.country ?? normalizedFallback.countryId ?? HERO_SMS_COUNTRY_ID,
+        countryLabel: String(record.countryLabel ?? normalizedFallback.countryLabel ?? '').trim(),
+        successfulUses: normalizedFallback.successfulUses ?? 0,
+        maxUses: normalizedFallback.maxUses ?? DEFAULT_PHONE_NUMBER_MAX_USES,
+        statusAction: String(record.statusAction ?? normalizedFallback.statusAction ?? 'getStatus').trim() || 'getStatus',
+      });
+    }
+
+    async function findHeroSmsActiveActivationByPhoneNumber(state = {}, phoneNumber = '') {
+      const targetDigits = normalizePhoneNumberDigits(phoneNumber);
+      if (!targetDigits) {
+        return null;
+      }
+      const config = resolvePhoneConfig(state);
+      if (config.provider !== PHONE_SMS_PROVIDER_HERO) {
+        return null;
+      }
+      const payload = await fetchHeroSmsPayload(
+        config,
+        { action: 'getActiveActivations' },
+        'HeroSMS getActiveActivations'
+      );
+      const recordCandidates = [];
+      if (Array.isArray(payload?.data)) {
+        recordCandidates.push(...payload.data);
+      }
+      if (Array.isArray(payload?.activeActivations?.rows)) {
+        recordCandidates.push(...payload.activeActivations.rows);
+      }
+      if (payload?.activeActivations?.row && typeof payload.activeActivations.row === 'object') {
+        recordCandidates.push(payload.activeActivations.row);
+      }
+
+      const fallback = {
+        serviceCode: state?.signupPhoneActivation?.serviceCode || HERO_SMS_SERVICE_CODE,
+        countryId: state?.heroSmsCountryId ?? HERO_SMS_COUNTRY_ID,
+        countryLabel: state?.heroSmsCountryLabel || HERO_SMS_COUNTRY_LABEL,
+        statusAction: 'getStatus',
+      };
+      for (const record of recordCandidates) {
+        const candidateDigits = normalizePhoneNumberDigits(
+          record?.phoneNumber ?? record?.phone ?? record?.number ?? ''
+        );
+        if (!candidateDigits || candidateDigits !== targetDigits) {
+          continue;
+        }
+        const activation = buildHeroSmsActivationFromLookupRecord(record, fallback);
+        if (activation) {
+          return activation;
+        }
+      }
+      return null;
+    }
+
+    async function listHeroSmsActiveActivations(state = {}) {
+      const config = resolvePhoneConfig(state);
+      if (config.provider !== PHONE_SMS_PROVIDER_HERO) {
+        return [];
+      }
+      const payload = await fetchHeroSmsPayload(
+        config,
+        { action: 'getActiveActivations' },
+        'HeroSMS getActiveActivations'
+      );
+      const rawRecords = [];
+      if (Array.isArray(payload?.data)) {
+        rawRecords.push(...payload.data);
+      }
+      if (Array.isArray(payload?.activeActivations?.rows)) {
+        rawRecords.push(...payload.activeActivations.rows);
+      }
+      if (payload?.activeActivations?.row && typeof payload.activeActivations.row === 'object') {
+        rawRecords.push(payload.activeActivations.row);
+      }
+
+      const countryCandidates = resolveCountryCandidates(state);
+      const allowedCountryIds = new Set(
+        countryCandidates
+          .map((entry) => normalizeCountryId(entry.id, 0))
+          .filter((id) => id > 0)
+      );
+      const countryOrder = new Map();
+      countryCandidates.forEach((entry, index) => {
+        const id = normalizeCountryId(entry.id, 0);
+        if (id > 0 && !countryOrder.has(id)) {
+          countryOrder.set(id, index);
+        }
+      });
+
+      const seenActivationIds = new Set();
+      const activations = [];
+      rawRecords.forEach((record) => {
+        const activation = buildHeroSmsActivationFromLookupRecord(record, {
+          serviceCode: HERO_SMS_SERVICE_CODE,
+          countryId: state?.heroSmsCountryId ?? HERO_SMS_COUNTRY_ID,
+          countryLabel: state?.heroSmsCountryLabel || HERO_SMS_COUNTRY_LABEL,
+          statusAction: 'getStatus',
+        });
+        if (!activation || seenActivationIds.has(activation.activationId)) {
+          return;
+        }
+        if (activation.provider !== PHONE_SMS_PROVIDER_HERO) {
+          return;
+        }
+        if (activation.serviceCode !== HERO_SMS_SERVICE_CODE) {
+          return;
+        }
+        const countryId = normalizeCountryId(activation.countryId, 0);
+        if (allowedCountryIds.size > 0 && countryId > 0 && !allowedCountryIds.has(countryId)) {
+          return;
+        }
+        const statusText = String(record?.activationStatus ?? record?.status ?? '').trim();
+        if (statusText && /^(6|8|CANCEL|CANCELED|CANCELLED|FINISH|FINISHED|DONE|EXPIRED)$/i.test(statusText)) {
+          return;
+        }
+        seenActivationIds.add(activation.activationId);
+        activations.push(activation);
+      });
+
+      activations.sort((left, right) => {
+        const leftCountryOrder = countryOrder.get(normalizeCountryId(left.countryId, 0));
+        const rightCountryOrder = countryOrder.get(normalizeCountryId(right.countryId, 0));
+        const leftRank = Number.isInteger(leftCountryOrder) ? leftCountryOrder : Number.MAX_SAFE_INTEGER;
+        const rightRank = Number.isInteger(rightCountryOrder) ? rightCountryOrder : Number.MAX_SAFE_INTEGER;
+        if (leftRank !== rightRank) {
+          return leftRank - rightRank;
+        }
+        return left.activationId.localeCompare(right.activationId);
+      });
+
+      return activations;
     }
 
     function normalizeHeroSmsPrice(value) {
@@ -1408,6 +1583,19 @@
       return fetchHeroSmsPayload(config, query, `HeroSMS ${action}`);
     }
 
+    function formatHeroSmsGetNumberRequestParams(countryConfig, action, maxPrice) {
+      const params = [
+        `action=${action}`,
+        `service=${HERO_SMS_SERVICE_CODE}`,
+        `country=${countryConfig.id}`,
+      ];
+      if (maxPrice !== null && maxPrice !== undefined) {
+        params.push(`maxPrice=${maxPrice}`);
+        params.push('fixedPrice=true');
+      }
+      return params.join('&');
+    }
+
     async function requestPhoneActivationWithPrice(config, countryConfig, action, maxPrice, options = {}) {
       let nextMaxPrice = maxPrice;
       let retriedWithUpdatedPrice = false;
@@ -1416,6 +1604,10 @@
 
       while (true) {
         try {
+          await addLog(
+            `Step 9: HeroSMS ${action} request params: ${formatHeroSmsGetNumberRequestParams(countryConfig, action, nextMaxPrice)}`,
+            'info'
+          );
           return await fetchPhoneActivationPayload(config, countryConfig, action, {
             maxPrice: nextMaxPrice,
           });
@@ -1992,19 +2184,19 @@
 
       if (finalNoNumbersByCountry.length) {
         throw new Error(
-          `HeroSMS no numbers available across ${countryCandidates.length} country candidate(s): ${finalNoNumbersByCountry.join(' | ')}.`
+          `HeroSMS没有可用的号码 ${countryCandidates.length} 国家候选人(s): ${finalNoNumbersByCountry.join(' | ')}.`
         );
       }
       if (finalLastError) {
         throw finalLastError;
       }
-      throw new Error(`HeroSMS failed to acquire a phone number. Last status: ${finalLastFailureText || 'unknown'}.`);
+      throw new Error(`HeroSMS无法获取电话号码。上次状态: ${finalLastFailureText || 'unknown'}.`);
     }
 
     async function reactivatePhoneActivation(state = {}, activation) {
       const normalizedActivation = normalizeActivation(activation);
       if (!normalizedActivation) {
-        throw new Error('Reusable phone activation is missing.');
+        throw new Error('缺少可重复使用的手机激活功能.');
       }
 
       const config = resolvePhoneConfig(state);
@@ -2545,6 +2737,7 @@
         signupPhoneNumber: '',
         signupPhoneActivation: null,
         signupPhoneCompletedActivation: null,
+        signupPhoneEntryMode: null,
         signupPhoneVerificationRequestedAt: null,
         signupPhoneVerificationPurpose: '',
         [PHONE_VERIFICATION_CODE_STATE_KEY]: '',
@@ -2560,7 +2753,22 @@
     }
 
     async function prepareSignupPhoneActivation(state = {}, options = {}) {
-      const activation = await requestPhoneActivation(state, options);
+      let activation = null;
+      if (options?.preferActiveActivationPool) {
+        const activeActivations = await listHeroSmsActiveActivations(state);
+        if (activeActivations.length > 0) {
+          activation = activeActivations[0];
+          await addLog(
+            `步骤 2：号池模式已从 HeroSMS 活跃激活记录中取出手机号 ${activation.phoneNumber}（activationId=${activation.activationId}）。`,
+            'warn'
+          );
+        } else {
+          await addLog('步骤 2：号池模式下未找到可用的 HeroSMS 活跃激活记录，准备回退到自动获取新手机号。', 'warn');
+        }
+      }
+      if (!activation) {
+        activation = await requestPhoneActivation(state, options);
+      }
       const normalizedActivation = normalizeActivation(activation);
       if (!normalizedActivation) {
         throw new Error('步骤 2：接码平台返回的手机号订单无效。');
@@ -2568,6 +2776,7 @@
       await setPhoneRuntimeState({
         signupPhoneNumber: normalizedActivation.phoneNumber,
         signupPhoneActivation: normalizedActivation,
+        signupPhoneEntryMode: 'auto',
         signupPhoneVerificationRequestedAt: null,
         signupPhoneVerificationPurpose: 'signup',
         accountIdentifierType: 'phone',
@@ -2591,6 +2800,7 @@
       if (activeActivation && activeActivation.activationId === preferredActivation.activationId) {
         await setPhoneRuntimeState({
           signupPhoneNumber: activeActivation.phoneNumber,
+          signupPhoneEntryMode: normalizeSignupPhoneEntryMode(state?.signupPhoneEntryMode) || 'auto',
           signupPhoneVerificationPurpose: 'login',
         });
         return activeActivation;
@@ -2606,6 +2816,7 @@
         signupPhoneActivation: normalizedActivation,
         signupPhoneCompletedActivation: preferredActivation,
         signupPhoneNumber: normalizedActivation.phoneNumber,
+        signupPhoneEntryMode: normalizeSignupPhoneEntryMode(state?.signupPhoneEntryMode) || 'auto',
         signupPhoneVerificationRequestedAt: null,
         signupPhoneVerificationPurpose: 'login',
         [PHONE_VERIFICATION_CODE_STATE_KEY]: '',
@@ -2623,6 +2834,7 @@
       const updates = {
         signupPhoneActivation: null,
         signupPhoneNumber: '',
+        signupPhoneEntryMode: null,
         signupPhoneVerificationRequestedAt: null,
         signupPhoneVerificationPurpose: '',
         signupPhoneCompletedActivation: null,
@@ -2744,6 +2956,7 @@
           successfulUses: Number(normalizedActivation.successfulUses || 0) + 1,
         },
         signupPhoneNumber: normalizedActivation.phoneNumber,
+        signupPhoneEntryMode: normalizeSignupPhoneEntryMode(state?.signupPhoneEntryMode) || 'auto',
         signupPhoneVerificationRequestedAt: null,
         signupPhoneVerificationPurpose: '',
         [PHONE_VERIFICATION_CODE_STATE_KEY]: '',
@@ -2774,6 +2987,7 @@
           successfulUses: Number(normalizedActivation.successfulUses || 0) + 1,
         },
         signupPhoneNumber: normalizedActivation.phoneNumber,
+        signupPhoneEntryMode: normalizeSignupPhoneEntryMode(state?.signupPhoneEntryMode) || 'auto',
         signupPhoneVerificationRequestedAt: null,
         signupPhoneVerificationPurpose: '',
         [PHONE_VERIFICATION_CODE_STATE_KEY]: '',
@@ -2783,9 +2997,102 @@
       return normalizedActivation;
     }
 
+    function getSignupPhoneIdentity(state = {}) {
+      const accountIdentifierType = String(state?.accountIdentifierType || '').trim().toLowerCase();
+      return String(
+        state?.signupPhoneNumber
+        || (accountIdentifierType === 'phone' ? state?.accountIdentifier : '')
+        || state?.signupPhoneCompletedActivation?.phoneNumber
+        || state?.signupPhoneActivation?.phoneNumber
+        || ''
+      ).trim();
+    }
+
+    async function confirmManualPhoneVerificationStep(step, options = {}) {
+      const completionStep = Math.floor(Number(options?.completionStep || step) || 0) || step;
+      const promptStep = Math.floor(Number(options?.promptStep || completionStep) || 0) || completionStep;
+      const verificationLabel = completionStep === 4 ? '注册' : '登录';
+      await addLog(
+        `步骤 ${completionStep}：当前为手动手机号模式，请手动在页面中输入${verificationLabel}手机验证码并进入下一页面。`,
+        'warn'
+      );
+
+      let response = null;
+      try {
+        response = await confirmCustomVerificationStepBypassRequest?.(promptStep, { context: 'phone' });
+      } catch {
+        throw new Error(`步骤 ${completionStep}：无法打开确认弹窗，请先保持侧边栏打开后重试。`);
+      }
+
+      if (!response) {
+        throw new Error(`步骤 ${completionStep}：手动手机号确认能力不可用，请先保持侧边栏打开后重试。`);
+      }
+      if (response?.error) {
+        throw new Error(response.error);
+      }
+      if (!response?.confirmed) {
+        throw new Error(`步骤 ${completionStep}：已取消手动${verificationLabel}手机验证码确认。`);
+      }
+
+      await setPhoneRuntimeState({
+        signupPhoneVerificationRequestedAt: null,
+        signupPhoneVerificationPurpose: '',
+        [PHONE_VERIFICATION_CODE_STATE_KEY]: '',
+      });
+      await addLog(`步骤 ${completionStep}：已确认手动完成${verificationLabel}手机验证码输入，继续后续流程。`, 'warn');
+      return {
+        manualConfirmation: true,
+        code: '',
+      };
+    }
+
     async function completeSignupPhoneVerificationFlow(tabId, options = {}) {
       let state = options?.state || await getState();
-      const activation = normalizeActivation(options?.activation || state?.signupPhoneActivation);
+      let activation = normalizeActivation(options?.activation || state?.signupPhoneActivation);
+      if (!activation) {
+        const manualPhoneNumber = getSignupPhoneIdentity(state);
+        const signupPhoneEntryMode = normalizeSignupPhoneEntryMode(state?.signupPhoneEntryMode);
+        if (signupPhoneEntryMode === 'manual' && manualPhoneNumber) {
+          await setPhoneRuntimeState({
+            signupPhoneNumber: manualPhoneNumber,
+            signupPhoneActivation: null,
+            signupPhoneEntryMode: signupPhoneEntryMode || 'manual',
+            signupPhoneVerificationRequestedAt: null,
+            signupPhoneVerificationPurpose: 'signup',
+            [PHONE_VERIFICATION_CODE_STATE_KEY]: '',
+            accountIdentifierType: 'phone',
+            accountIdentifier: manualPhoneNumber,
+          });
+          const manualResult = await confirmManualPhoneVerificationStep(4, {
+            completionStep: 4,
+            promptStep: 4,
+          });
+          await addLog('步骤 4：已按手动手机号模式确认注册手机验证码，继续进入资料填写。', 'ok');
+          return manualResult;
+        }
+        if (signupPhoneEntryMode === 'pool' && manualPhoneNumber) {
+          const recoveredActivation = await findHeroSmsActiveActivationByPhoneNumber(state, manualPhoneNumber);
+          if (!recoveredActivation) {
+            throw new Error(`步骤 4：未在 HeroSMS 激活记录中找到当前注册手机号 ${manualPhoneNumber}，请确认该号码仍处于激活中后重试。`);
+          }
+          activation = recoveredActivation;
+          await setPhoneRuntimeState({
+            signupPhoneNumber: recoveredActivation.phoneNumber,
+            signupPhoneActivation: recoveredActivation,
+            signupPhoneEntryMode: 'pool',
+            signupPhoneVerificationRequestedAt: null,
+            signupPhoneVerificationPurpose: 'signup',
+            [PHONE_VERIFICATION_CODE_STATE_KEY]: '',
+            accountIdentifierType: 'phone',
+            accountIdentifier: recoveredActivation.phoneNumber,
+          });
+          await addLog(
+            `步骤 4：已从 HeroSMS 激活记录中恢复手机号 ${recoveredActivation.phoneNumber} 的 activationId ${recoveredActivation.activationId}，继续自动获取验证码。`,
+            'info'
+          );
+          state = await getState();
+        }
+      }
       if (!activation) {
         await clearSignupPhoneRegistrationState(
           '步骤 4：未找到当前注册手机号激活记录，已清理当前手机号状态；重新执行步骤 2 时将重新获取手机号。'
@@ -2972,11 +3279,59 @@
     async function completeLoginPhoneVerificationFlow(tabId, options = {}) {
       const visibleStep = Math.floor(Number(options?.visibleStep || options?.step) || 0) || 8;
       let state = options?.state || await getState();
-      const baseActivation = normalizeActivation(
+      const manualPhoneNumber = getSignupPhoneIdentity(state);
+      const signupPhoneEntryMode = normalizeSignupPhoneEntryMode(state?.signupPhoneEntryMode);
+      const manualSignupPhoneMode = signupPhoneEntryMode === 'manual';
+      let baseActivation = normalizeActivation(
         options?.activation
         || state?.signupPhoneCompletedActivation
         || state?.signupPhoneActivation
       );
+      if (!baseActivation) {
+        if (manualSignupPhoneMode && manualPhoneNumber) {
+          await setPhoneRuntimeState({
+            signupPhoneNumber: manualPhoneNumber,
+            signupPhoneActivation: null,
+            signupPhoneEntryMode: signupPhoneEntryMode || 'manual',
+            signupPhoneVerificationRequestedAt: null,
+            signupPhoneVerificationPurpose: 'login',
+            [PHONE_VERIFICATION_CODE_STATE_KEY]: '',
+            accountIdentifierType: 'phone',
+            accountIdentifier: manualPhoneNumber,
+          });
+          const manualResult = await confirmManualPhoneVerificationStep(visibleStep, {
+            completionStep: visibleStep,
+            promptStep: visibleStep,
+          });
+          await addLog(`步骤 ${visibleStep}：已按手动手机号模式确认登录手机验证码，继续进入后续授权流程。`, 'ok');
+          return manualResult;
+        }
+        if (signupPhoneEntryMode === 'pool' && manualPhoneNumber) {
+          const recoveredActivation = await findHeroSmsActiveActivationByPhoneNumber(state, manualPhoneNumber);
+          if (!recoveredActivation) {
+            throw new Error(
+              `步骤 ${visibleStep}：未在 HeroSMS 激活记录中找到当前登录手机号 ${manualPhoneNumber}，请确认该号码仍处于激活中后重试。`
+            );
+          }
+          baseActivation = recoveredActivation;
+          await setPhoneRuntimeState({
+            signupPhoneNumber: recoveredActivation.phoneNumber,
+            signupPhoneActivation: recoveredActivation,
+            signupPhoneCompletedActivation: null,
+            signupPhoneEntryMode: 'pool',
+            signupPhoneVerificationRequestedAt: null,
+            signupPhoneVerificationPurpose: 'login',
+            [PHONE_VERIFICATION_CODE_STATE_KEY]: '',
+            accountIdentifierType: 'phone',
+            accountIdentifier: recoveredActivation.phoneNumber,
+          });
+          await addLog(
+            `步骤 ${visibleStep}：已从 HeroSMS 激活记录中恢复手机号 ${recoveredActivation.phoneNumber} 的 activationId ${recoveredActivation.activationId}，继续自动获取登录验证码。`,
+            'info'
+          );
+          state = await getState();
+        }
+      }
       if (!baseActivation) {
         throw new Error(`步骤 ${visibleStep}：未找到当前登录手机号激活记录，请重新执行步骤 ${visibleStep >= 11 ? 10 : 7}。`);
       }

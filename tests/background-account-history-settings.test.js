@@ -53,6 +53,7 @@ test('background account history settings are normalized independently from hotm
     extractFunction('normalizeCodex2ApiUrl'),
     extractFunction('normalizeHotmailLocalBaseUrl'),
     extractFunction('normalizeAccountRunHistoryHelperBaseUrl'),
+    extractFunction('normalizeSignupPhonePool'),
     extractFunction('normalizeVerificationResendCount'),
     extractFunction('normalizePhoneVerificationReplacementLimit'),
     extractFunction('normalizePhoneCodeWaitSeconds'),
@@ -124,6 +125,11 @@ return {
 
   assert.equal(api.normalizePersistentSettingValue('accountRunHistoryTextEnabled', 1), true);
   assert.equal(api.normalizePersistentSettingValue('phoneVerificationEnabled', 1), true);
+  assert.equal(api.normalizePersistentSettingValue('signupPhonePoolEnabled', 1), true);
+  assert.deepStrictEqual(
+    api.normalizePersistentSettingValue('signupPhonePool', ' +66812345678 \n+447700900123\n+66812345678 '),
+    ['+66812345678', '+447700900123']
+  );
   assert.equal(api.normalizePersistentSettingValue('verificationResendCount', '7'), 7);
   assert.equal(api.normalizePersistentSettingValue('verificationResendCount', '-1'), 0);
   assert.equal(api.normalizePersistentSettingValue('phoneVerificationReplacementLimit', '9'), 9);

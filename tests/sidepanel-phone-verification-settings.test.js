@@ -62,6 +62,8 @@ test('sidepanel html exposes phone verification toggle and dedicated HeroSMS row
   assert.match(html, /id="btn-toggle-phone-verification-section"/);
   assert.match(html, /id="row-phone-verification-fold"/);
   assert.match(html, /id="input-phone-verification-enabled"/);
+  assert.match(html, /id="row-signup-phone-pool-enabled"/);
+  assert.match(html, /id="input-signup-phone-pool-enabled"/);
   assert.match(html, /id="row-phone-sms-provider"/);
   assert.match(html, /id="select-phone-sms-provider"/);
   assert.match(html, /id="row-phone-sms-provider-order"/);
@@ -190,6 +192,10 @@ let currentSignupMethod = 'email';
 const inputPhoneVerificationEnabled = { checked: false };
 const inputPlusModeEnabled = { checked: false };
 const rowSignupMethod = { style: { display: 'none' } };
+const rowSignupPhonePoolEnabled = { style: { display: 'none' } };
+const inputSignupPhonePoolEnabled = { checked: false };
+const rowSignupPhonePool = { style: { display: 'none' } };
+const inputSignupPhonePool = { value: '' };
 const rowSignupPhone = { style: { display: 'none' } };
 const inputSignupPhone = { value: '' };
 const signupMethodButtons = [
@@ -302,6 +308,10 @@ return {
   rowPhoneVerificationEnabled,
   rowPhoneVerificationFold,
   rowSignupMethod,
+  rowSignupPhonePoolEnabled,
+  inputSignupPhonePoolEnabled,
+  rowSignupPhonePool,
+  inputSignupPhonePool,
   signupMethodButtons,
   rowPhoneSmsProvider,
   rowPhoneSmsProviderOrder,
@@ -340,6 +350,8 @@ return {
   api.updatePhoneVerificationSettingsUI();
   assert.equal(api.rowPhoneVerificationEnabled.style.display, '');
   assert.equal(api.rowPhoneVerificationFold.style.display, 'none');
+  assert.equal(api.rowSignupPhonePoolEnabled.style.display, 'none');
+  assert.equal(api.rowSignupPhonePool.style.display, 'none');
   assert.equal(api.rowPhoneSmsProvider.style.display, 'none');
   assert.equal(api.rowPhoneSmsProviderOrder.style.display, 'none');
   assert.equal(api.rowPhoneSmsProviderOrderActions.style.display, 'none');
@@ -374,6 +386,8 @@ return {
   api.updatePhoneVerificationSettingsUI();
   assert.equal(api.rowPhoneVerificationFold.style.display, '');
   assert.equal(api.rowSignupMethod.style.display, '');
+  assert.equal(api.rowSignupPhonePoolEnabled.style.display, 'none');
+  assert.equal(api.rowSignupPhonePool.style.display, 'none');
   assert.equal(api.rowPhoneSmsProvider.style.display, '');
   assert.equal(api.rowPhoneSmsProviderOrder.style.display, '');
   assert.equal(api.rowPhoneSmsProviderOrderActions.style.display, '');
@@ -396,6 +410,12 @@ return {
   assert.equal(api.rowPhoneCodePollMaxRounds.style.display, '');
   assert.equal(api.rowFiveSimApiKey.style.display, 'none');
   assert.equal(api.rowNexSmsApiKey.style.display, 'none');
+
+  api.signupMethodButtons[0].classList.toggle('is-active', false);
+  api.signupMethodButtons[1].classList.toggle('is-active', true);
+  api.updatePhoneVerificationSettingsUI();
+  assert.equal(api.rowSignupPhonePoolEnabled.style.display, '');
+  assert.equal(api.rowSignupPhonePool.style.display, 'none');
 
   api.selectPhoneSmsProvider.value = '5sim';
   api.setLatestState({ phoneSmsProvider: '5sim', phoneSmsProviderOrder: ['5sim'] });
@@ -886,6 +906,158 @@ test('phone sms provider order menu reuses full-width country menu layout so the
   );
 });
 
+test('HeroSMS price preview formats all returned price tiers with stock counts', () => {
+  const api = new Function(`
+${extractFunction('normalizeHeroSmsPriceForPreview')}
+${extractFunction('formatHeroSmsPriceForPreview')}
+${extractFunction('collectHeroSmsPriceEntriesForPreview')}
+${extractFunction('formatHeroSmsPriceTierSummaryForPreview')}
+return {
+  collectHeroSmsPriceEntriesForPreview,
+  formatHeroSmsPriceTierSummaryForPreview,
+};
+`)();
+
+  const payload = {
+    52: {
+      dr: [
+        { price: 0.025, count: 0 },
+        { price: 0.0263, count: 7 },
+        { price: 0.028, physicalCount: 11 },
+        { cost: 0.028, count: 4 },
+        { amount: 0.03, available: 2 },
+      ],
+    },
+  };
+
+  const entries = api.collectHeroSmsPriceEntriesForPreview(payload, []);
+  assert.deepStrictEqual(
+    api.formatHeroSmsPriceTierSummaryForPreview(entries),
+    [
+      '0.0263 × 7',
+      '0.028 × 15',
+      '0.03 × 2',
+    ]
+  );
+});
+
+test('HeroSMS price preview button output shows every returned tier and phone count', async () => {
+  const displayHeroSmsPriceTiers = { textContent: '' };
+  const rowHeroSmsPriceTiers = { style: { display: 'none' } };
+  const inputHeroSmsMinPrice = { value: '0.026' };
+  const inputHeroSmsMaxPrice = { value: '' };
+  const inputHeroSmsApiKey = { value: 'demo-key' };
+  const requests = [];
+  const fetch = async (url) => {
+    const parsedUrl = new URL(url);
+    requests.push(parsedUrl);
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({
+        52: {
+          dr: [
+            { price: 0.025, count: 1 },
+            { price: 0.0263, count: 7 },
+            { price: 0.028, physicalCount: 11 },
+          ],
+        },
+      }),
+    };
+  };
+
+  const api = new Function('fetch', 'displayHeroSmsPriceTiers', 'rowHeroSmsPriceTiers', 'inputHeroSmsMinPrice', 'inputHeroSmsMaxPrice', 'inputHeroSmsApiKey', `
+const DEFAULT_HERO_SMS_MIN_PRICE = '0.05';
+const DEFAULT_HERO_SMS_COUNTRY_ID = 52;
+const DEFAULT_HERO_SMS_COUNTRY_LABEL = 'Thailand';
+function syncHeroSmsFallbackSelectionOrderFromSelect() {
+  return [{ id: 52, label: 'Thailand' }];
+}
+function getSelectedHeroSmsCountryOption() {
+  return { id: 52, label: 'Thailand' };
+}
+function getHeroSmsCountryLabelById() {
+  return 'Thailand';
+}
+${extractFunction('normalizeHeroSmsMaxPriceValue')}
+${extractFunction('normalizeHeroSmsMinPriceValue')}
+${extractFunction('normalizeHeroSmsCountryId')}
+${extractFunction('normalizeHeroSmsCountryLabel')}
+${extractFunction('normalizeHeroSmsFetchErrorMessage')}
+${extractFunction('normalizeHeroSmsPriceForPreview')}
+${extractFunction('formatHeroSmsPriceForPreview')}
+${extractFunction('isHeroSmsPreviewEmptyPayload')}
+${extractFunction('collectHeroSmsPriceEntriesForPreview')}
+${extractFunction('formatHeroSmsPriceTierSummaryForPreview')}
+${extractFunction('describeHeroSmsPreviewPayload')}
+${extractFunction('summarizeHeroSmsPreviewError')}
+${extractFunction('previewHeroSmsPriceTiers')}
+return { previewHeroSmsPriceTiers };
+`)(fetch, displayHeroSmsPriceTiers, rowHeroSmsPriceTiers, inputHeroSmsMinPrice, inputHeroSmsMaxPrice, inputHeroSmsApiKey);
+
+  await api.previewHeroSmsPriceTiers();
+
+  assert.equal(requests[0].searchParams.get('action'), 'serviceCountRent');
+  assert.equal(requests[0].searchParams.get('service'), 'dr');
+  assert.equal(requests[0].searchParams.get('country'), '52');
+  assert.equal(displayHeroSmsPriceTiers.textContent, 'Thailand: 0.025 × 1，0.0263 × 7，0.028 × 11');
+  assert.equal(rowHeroSmsPriceTiers.style.display, '');
+});
+
+test('HeroSMS price preview button output shows zero-stock tiers instead of lowest-price summary', async () => {
+  const displayHeroSmsPriceTiers = { textContent: '' };
+  const rowHeroSmsPriceTiers = { style: { display: 'none' } };
+  const inputHeroSmsMinPrice = { value: '0.026' };
+  const inputHeroSmsMaxPrice = { value: '' };
+  const inputHeroSmsApiKey = { value: 'demo-key' };
+  const fetch = async () => ({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({
+      53: {
+        dr: [
+          { price: 0.025, count: 0 },
+          { price: 0.0263, physicalCount: 0 },
+          { price: 0.028, available: 0 },
+        ],
+      },
+    }),
+  });
+
+  const api = new Function('fetch', 'displayHeroSmsPriceTiers', 'rowHeroSmsPriceTiers', 'inputHeroSmsMinPrice', 'inputHeroSmsMaxPrice', 'inputHeroSmsApiKey', `
+const DEFAULT_HERO_SMS_MIN_PRICE = '0.05';
+const DEFAULT_HERO_SMS_COUNTRY_ID = 52;
+const DEFAULT_HERO_SMS_COUNTRY_LABEL = 'Thailand';
+function syncHeroSmsFallbackSelectionOrderFromSelect() {
+  return [{ id: 53, label: '智利 (Chile)' }];
+}
+function getSelectedHeroSmsCountryOption() {
+  return { id: 53, label: '智利 (Chile)' };
+}
+function getHeroSmsCountryLabelById() {
+  return '智利 (Chile)';
+}
+${extractFunction('normalizeHeroSmsMaxPriceValue')}
+${extractFunction('normalizeHeroSmsMinPriceValue')}
+${extractFunction('normalizeHeroSmsCountryId')}
+${extractFunction('normalizeHeroSmsCountryLabel')}
+${extractFunction('normalizeHeroSmsFetchErrorMessage')}
+${extractFunction('normalizeHeroSmsPriceForPreview')}
+${extractFunction('formatHeroSmsPriceForPreview')}
+${extractFunction('isHeroSmsPreviewEmptyPayload')}
+${extractFunction('collectHeroSmsPriceEntriesForPreview')}
+${extractFunction('formatHeroSmsPriceTierSummaryForPreview')}
+${extractFunction('describeHeroSmsPreviewPayload')}
+${extractFunction('summarizeHeroSmsPreviewError')}
+${extractFunction('previewHeroSmsPriceTiers')}
+return { previewHeroSmsPriceTiers };
+`)(fetch, displayHeroSmsPriceTiers, rowHeroSmsPriceTiers, inputHeroSmsMinPrice, inputHeroSmsMaxPrice, inputHeroSmsApiKey);
+
+  await api.previewHeroSmsPriceTiers();
+
+  assert.equal(displayHeroSmsPriceTiers.textContent, '智利 (Chile): 0.025 × 0，0.0263 × 0，0.028 × 0');
+});
+
 test('collectSettingsPayload keeps local helper sync enabled while persisting sms toggle state', () => {
   const api = new Function('normalizeIcloudTargetMailboxType', 'normalizeIcloudForwardMailProvider', `
 let latestState = {
@@ -928,12 +1100,15 @@ const inputTempEmailAdminAuth = { value: '' };
 const inputTempEmailCustomAuth = { value: '' };
 const inputTempEmailReceiveMailbox = { value: '' };
 const inputTempEmailUseRandomSubdomain = { checked: false };
+const inputTempEmailCustomSubdomainPrefix = { value: 'edu' };
 const inputAutoSkipFailures = { checked: false };
 const inputAutoSkipFailuresThreadIntervalMinutes = { value: '0' };
 const inputAutoDelayEnabled = { checked: false };
 const inputAutoDelayMinutes = { value: '30' };
 const inputAutoStepDelaySeconds = { value: '' };
 const inputPhoneVerificationEnabled = { checked: true };
+const inputSignupPhonePoolEnabled = { checked: true };
+const inputSignupPhonePool = { value: '+66812345678\\n+447700900123' };
 function normalizeSignupMethod(value = '') {
   return String(value || '').trim().toLowerCase() === 'phone' ? 'phone' : 'email';
 }
@@ -1036,6 +1211,7 @@ function normalizeLuckmailBaseUrl(value) { return String(value || '').trim(); }
 function normalizeLuckmailEmailType(value) { return String(value || '').trim() || 'ms_graph'; }
 function normalizeCloudflareTempEmailBaseUrlValue(value) { return String(value || '').trim(); }
 function normalizeCloudflareTempEmailReceiveMailboxValue(value) { return String(value || '').trim(); }
+function normalizeCloudflareTempEmailCustomSubdomainPrefixValue(value) { return String(value || '').trim().toLowerCase().replace(/^\.+|\.+$/g, ''); }
 function normalizeAccountRunHistoryHelperBaseUrlValue(value) { return String(value || '').trim(); }
 function normalizeAutoRunThreadIntervalMinutes(value) { return Number(value) || 0; }
 function normalizeAutoDelayMinutes(value) { return Number(value) || 30; }
@@ -1063,6 +1239,8 @@ return { collectSettingsPayload };
   const payload = api.collectSettingsPayload();
 
   assert.equal(payload.phoneVerificationEnabled, true);
+  assert.equal(payload.signupPhonePoolEnabled, true);
+  assert.equal(Object.prototype.hasOwnProperty.call(payload, 'signupPhonePool'), false);
   assert.equal(payload.signupMethod, 'phone');
   assert.equal(payload.accountRunHistoryTextEnabled, true);
   assert.equal(payload.accountRunHistoryHelperBaseUrl, 'http://127.0.0.1:17373');
@@ -1132,12 +1310,15 @@ const inputTempEmailAdminAuth = { value: '' };
 const inputTempEmailCustomAuth = { value: '' };
 const inputTempEmailReceiveMailbox = { value: '' };
 const inputTempEmailUseRandomSubdomain = { checked: false };
+const inputTempEmailCustomSubdomainPrefix = { value: '' };
 const inputAutoSkipFailures = { checked: false };
 const inputAutoSkipFailuresThreadIntervalMinutes = { value: '0' };
 const inputAutoDelayEnabled = { checked: false };
 const inputAutoDelayMinutes = { value: '30' };
 const inputAutoStepDelaySeconds = { value: '' };
 const inputPhoneVerificationEnabled = { checked: false };
+const inputSignupPhonePoolEnabled = { checked: false };
+const inputSignupPhonePool = { value: '' };
 function normalizeSignupMethod(value = '') {
   return String(value || '').trim().toLowerCase() === 'phone' ? 'phone' : 'email';
 }
@@ -1194,6 +1375,7 @@ function normalizeLuckmailBaseUrl(value) { return String(value || '').trim(); }
 function normalizeLuckmailEmailType(value) { return String(value || '').trim() || 'ms_graph'; }
 function normalizeCloudflareTempEmailBaseUrlValue(value) { return String(value || '').trim(); }
 function normalizeCloudflareTempEmailReceiveMailboxValue(value) { return String(value || '').trim(); }
+function normalizeCloudflareTempEmailCustomSubdomainPrefixValue(value) { return String(value || '').trim().toLowerCase().replace(/^\.+|\.+$/g, ''); }
 function normalizeAccountRunHistoryHelperBaseUrlValue(value) { return String(value || '').trim(); }
 function normalizeAutoRunThreadIntervalMinutes(value) { return Number(value) || 0; }
 function normalizeAutoDelayMinutes(value) { return Number(value) || 30; }

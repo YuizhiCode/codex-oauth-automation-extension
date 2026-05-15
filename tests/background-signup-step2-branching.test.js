@@ -224,6 +224,7 @@ test('step 2 uses phone activation when resolved signup method is phone', async 
         accountIdentifier: '66959916439',
         signupPhoneNumber: '66959916439',
         signupPhoneActivation: activation,
+        signupPhoneEntryMode: 'auto',
         nextSignupState: 'phone_verification_page',
         nextSignupUrl: 'https://auth.openai.com/phone-verification',
         skippedPasswordStep: true,
@@ -364,6 +365,90 @@ test('step 2 submits manual signup phone without acquiring a number', async () =
         accountIdentifier: '+446700000002',
         signupPhoneNumber: '+446700000002',
         signupPhoneActivation: null,
+        signupPhoneEntryMode: 'manual',
+        nextSignupState: 'phone_verification_page',
+        nextSignupUrl: 'https://auth.openai.com/phone-verification',
+        skippedPasswordStep: true,
+      },
+    },
+  ]);
+});
+
+test('step 2 uses HeroSMS active activations as phone pool when signup phone pool mode is enabled', async () => {
+  const completedPayloads = [];
+  const sentPayloads = [];
+  const prepareCalls = [];
+  const activation = {
+    activationId: '380646967',
+    phoneNumber: '56977836015',
+    provider: 'hero-sms',
+    serviceCode: 'dr',
+    countryId: 151,
+    countryLabel: 'Chile',
+  };
+
+  const executor = step2Api.createStep2Executor({
+    addLog: async () => {},
+    chrome: { tabs: { update: async () => {} } },
+    completeStepFromBackground: async (step, payload) => {
+      completedPayloads.push({ step, payload });
+    },
+    ensureContentScriptReadyOnTab: async () => {},
+    ensureSignupEntryPageReady: async () => ({ tabId: 16 }),
+    ensureSignupPostIdentityPageReadyInTab: async () => ({
+      state: 'phone_verification_page',
+      url: 'https://auth.openai.com/phone-verification',
+    }),
+    getTabId: async () => 16,
+    isTabAlive: async () => true,
+    phoneVerificationHelpers: {
+      prepareSignupPhoneActivation: async (_state, options = {}) => {
+        prepareCalls.push(options);
+        return activation;
+      },
+    },
+    resolveSignupMethod: () => 'phone',
+    resolveSignupEmailForFlow: async () => {
+      throw new Error('email resolver should not run for phone signup');
+    },
+    sendToContentScriptResilient: async (_source, message) => {
+      if (message.type === 'ENSURE_SIGNUP_PHONE_ENTRY_READY') {
+        return { ready: true, state: 'phone_entry' };
+      }
+      sentPayloads.push(message.payload);
+      return { submitted: true };
+    },
+    SIGNUP_PAGE_INJECT_FILES: [],
+  });
+
+  await executor.executeStep2({
+    signupMethod: 'phone',
+    signupPhonePoolEnabled: true,
+    signupPhoneNumber: '+446700000002',
+    accountIdentifierType: 'phone',
+    accountIdentifier: '+446700000002',
+  });
+
+  assert.deepStrictEqual(prepareCalls, [
+    { preferActiveActivationPool: true },
+  ]);
+  assert.deepStrictEqual(sentPayloads, [
+    {
+      signupMethod: 'phone',
+      phoneNumber: '56977836015',
+      countryId: 151,
+      countryLabel: 'Chile',
+    },
+  ]);
+  assert.deepStrictEqual(completedPayloads, [
+    {
+      step: 2,
+      payload: {
+        accountIdentifierType: 'phone',
+        accountIdentifier: '56977836015',
+        signupPhoneNumber: '56977836015',
+        signupPhoneActivation: activation,
+        signupPhoneEntryMode: 'pool',
         nextSignupState: 'phone_verification_page',
         nextSignupUrl: 'https://auth.openai.com/phone-verification',
         skippedPasswordStep: true,

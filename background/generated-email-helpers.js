@@ -48,6 +48,20 @@
       return chars.join('');
     }
 
+    function buildCloudflareTempEmailPrefixedDomain(domain = '', prefix = '') {
+      const normalized = String(domain || '').trim().toLowerCase().replace(/^\.+|\.+$/g, '');
+      if (!normalized) {
+        return '';
+      }
+      const normalizedPrefix = String(prefix || '').trim().toLowerCase().replace(/^\.+|\.+$/g, '');
+      if (!normalizedPrefix) {
+        return normalized;
+      }
+      return normalized.startsWith(`${normalizedPrefix}.`)
+        ? normalized
+        : `${normalizedPrefix}.${normalized}`;
+    }
+
     async function fetchCloudflareEmail(state, options = {}) {
       throwIfStopped();
       const latestState = state || await getState();
@@ -146,11 +160,17 @@
         requireDomain: true,
       });
       const requestedName = String(options.localPart || options.name || '').trim().toLowerCase() || generateCloudflareAliasLocalPart();
+      const requestedDomain = config.useRandomSubdomain
+        ? String(config.domain || '').trim().toLowerCase()
+        : buildCloudflareTempEmailPrefixedDomain(config.domain, config.customSubdomainPrefix);
+      if (!requestedDomain) {
+        throw new Error('Cloudflare Temp Email 域名为空或格式无效。');
+      }
       const payload = {
         enablePrefix: true,
         enableRandomSubdomain: Boolean(config.useRandomSubdomain),
         name: requestedName,
-        domain: config.domain,
+        domain: requestedDomain,
       };
       const result = await requestCloudflareTempEmailJson(config, '/admin/new_address', {
         method: 'POST',

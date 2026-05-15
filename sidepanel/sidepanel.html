@@ -469,6 +469,20 @@
                 <button type="button" class="choice-btn" data-signup-method="phone">手机号注册</button>
               </div>
             </div>
+            <div class="data-row" id="row-signup-phone-pool-enabled" style="display:none;">
+              <span class="data-label">活跃号池</span>
+              <div class="data-inline setting-pair">
+                <div class="setting-group setting-group-primary">
+                  <label class="toggle-switch" for="input-signup-phone-pool-enabled" title="开启后手机号注册优先从 HeroSMS 活跃激活记录取号">
+                    <input type="checkbox" id="input-signup-phone-pool-enabled" />
+                    <span class="toggle-switch-track" aria-hidden="true">
+                      <span class="toggle-switch-thumb"></span>
+                    </span>
+                  </label>
+                </div>
+                <span class="setting-caption">优先使用 HeroSMS 活跃激活号码</span>
+              </div>
+            </div>
             <div class="data-row" id="row-account-run-history-helper-base-url" style="display:none;">
               <span class="data-label">同步服务</span>
               <input type="text" id="input-account-run-history-helper-base-url" class="data-input mono"
@@ -930,6 +944,14 @@
             <span>启用</span>
           </label>
           <span class="setting-caption">依赖后端 RANDOM_SUBDOMAIN_DOMAINS</span>
+        </div>
+      </div>
+      <div class="data-row" id="row-temp-email-custom-subdomain-prefix" style="display:none;">
+        <span class="data-label">固定子域</span>
+        <div class="data-inline">
+          <input type="text" id="input-temp-email-custom-subdomain-prefix" class="data-input"
+            placeholder="例如 edu" />
+          <span class="setting-caption">关闭随机子域时生效，最终域名为 前缀.原域名</span>
         </div>
       </div>
       <div class="data-row" id="row-temp-email-domain" style="display:none;">

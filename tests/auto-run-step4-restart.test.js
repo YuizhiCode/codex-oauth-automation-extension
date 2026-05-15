@@ -66,6 +66,7 @@ test('auto-run restarts from step 1 with the same email after step 4 failure', a
 const AUTO_STEP_DELAYS = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0 };
 const LAST_STEP_ID = 10;
 const FINAL_OAUTH_CHAIN_START_STEP = 7;
+const CLOUDFLARE_TEMP_EMAIL_GENERATOR = 'cloudflare-temp-email';
 const chrome = {
   tabs: {
     update: async () => {},
@@ -208,6 +209,166 @@ return {
   assert.equal(currentState.email, 'keep@example.com');
   assert.equal(currentState.password, 'Secret123!');
   assert.equal(events.logs.some(({ message }) => /沿用当前邮箱回到步骤 1 重新开始/.test(message)), true);
+});
+
+test('auto-run clears cloudflare temp email and regenerates when random subdomain is enabled after step 4 failure', async () => {
+  const api = new Function(`
+const AUTO_STEP_DELAYS = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0 };
+const LAST_STEP_ID = 10;
+const FINAL_OAUTH_CHAIN_START_STEP = 7;
+const CLOUDFLARE_TEMP_EMAIL_GENERATOR = 'cloudflare-temp-email';
+const chrome = {
+  tabs: {
+    update: async () => {},
+  },
+  runtime: {
+    sendMessage: async () => {},
+  },
+};
+
+let remainingFailures = 1;
+let generatedCounter = 0;
+let currentState = {
+  email: 'old@fixed.mail.example.com',
+  password: 'Secret123!',
+  mailProvider: '163',
+  emailGenerator: 'cloudflare-temp-email',
+  cloudflareTempEmailUseRandomSubdomain: true,
+  stepStatuses: {
+    1: 'pending',
+    2: 'pending',
+    3: 'pending',
+    4: 'pending',
+    5: 'pending',
+    6: 'pending',
+    7: 'pending',
+    8: 'pending',
+    9: 'pending',
+    10: 'pending',
+  },
+};
+const events = {
+  steps: [],
+  emails: [],
+  invalidations: [],
+  logs: [],
+  setStateCalls: [],
+};
+
+async function addLog(message, level = 'info') {
+  events.logs.push({ message, level });
+}
+
+async function ensureAutoEmailReady() {
+  if (!currentState.email) {
+    generatedCounter += 1;
+    currentState = {
+      ...currentState,
+      email: \`fresh\${generatedCounter}@rand\${generatedCounter}.mail.example.com\`,
+    };
+  }
+  events.emails.push(currentState.email);
+  return currentState.email;
+}
+
+async function broadcastAutoRunStatus() {}
+
+async function getState() {
+  return currentState;
+}
+
+async function setState(updates) {
+  currentState = {
+    ...currentState,
+    ...updates,
+    stepStatuses: updates.stepStatuses ? { ...updates.stepStatuses } : currentState.stepStatuses,
+  };
+  events.setStateCalls.push(updates);
+}
+
+function isStopError(error) {
+  return (error?.message || String(error || '')) === '流程已被用户停止。';
+}
+
+function isStepDoneStatus(status) {
+  return status === 'completed' || status === 'manual_completed' || status === 'skipped';
+}
+
+async function executeStepAndWait(step) {
+  events.steps.push(step);
+  if (step === 4 && remainingFailures > 0) {
+    remainingFailures -= 1;
+    throw new Error('步骤 4 提交验证码前页面异常。');
+  }
+}
+
+async function getTabId() {
+  return 1;
+}
+
+async function invalidateDownstreamAfterStepRestart(step, options = {}) {
+  events.invalidations.push({ step, options });
+  currentState = {
+    ...currentState,
+    password: null,
+    stepStatuses: {
+      1: currentState.stepStatuses[1] || 'completed',
+      2: 'pending',
+      3: 'pending',
+      4: 'pending',
+      5: 'pending',
+      6: 'pending',
+      7: 'pending',
+      8: 'pending',
+      9: 'pending',
+      10: 'pending',
+    },
+  };
+}
+
+function getLoginAuthStateLabel(state) {
+  return state || 'unknown';
+}
+
+function getErrorMessage(error) {
+  return error?.message || String(error || '');
+}
+
+async function getLoginAuthStateFromContent() {
+  return { state: 'password_page', url: 'https://auth.openai.com/log-in' };
+}
+
+${bundle}
+
+return {
+  async run() {
+    await runAutoSequenceFromStep(1, {
+      targetRun: 1,
+      totalRuns: 1,
+      attemptRuns: 1,
+      continued: false,
+    });
+    return { events, currentState };
+  },
+};
+`)();
+
+  const { events, currentState } = await api.run();
+
+  assert.deepStrictEqual(events.invalidations, [
+    {
+      step: 1,
+      options: {
+        logLabel: '步骤 4 报错后准备回到步骤 1 重新生成随机子域邮箱（第 1 次重开）',
+      },
+    },
+  ]);
+  assert.deepStrictEqual(events.emails, ['old@fixed.mail.example.com', 'fresh1@rand1.mail.example.com']);
+  assert.deepStrictEqual(events.steps, [1, 2, 3, 4, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  assert.equal(currentState.email, 'fresh1@rand1.mail.example.com');
+  assert.equal(currentState.password, 'Secret123!');
+  assert.equal(events.logs.some(({ message }) => /重新生成随机子域邮箱/.test(message)), true);
+  assert.equal(events.setStateCalls.some((updates) => Object.prototype.hasOwnProperty.call(updates, 'email') && updates.email === null), true);
 });
 
 test('auto-run does not restart step 4 current attempt when user_already_exists is detected', async () => {

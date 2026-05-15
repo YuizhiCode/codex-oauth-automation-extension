@@ -255,6 +255,22 @@
         return {
           phoneNumber: existingActivation.phoneNumber,
           activation: existingActivation,
+          entryMode: 'auto',
+        };
+      }
+
+      const signupPhonePoolEnabled = Boolean(state?.signupPhonePoolEnabled);
+      if (signupPhonePoolEnabled) {
+        if (typeof phoneVerificationHelpers?.prepareSignupPhoneActivation !== 'function') {
+          throw new Error('手机号注册流程不可用：接码模块尚未初始化。');
+        }
+        const activation = await phoneVerificationHelpers.prepareSignupPhoneActivation(state, {
+          preferActiveActivationPool: true,
+        });
+        return {
+          phoneNumber: activation.phoneNumber,
+          activation,
+          entryMode: 'pool',
         };
       }
 
@@ -264,6 +280,7 @@
         return {
           phoneNumber: manualPhoneNumber,
           activation: null,
+          entryMode: 'manual',
         };
       }
 
@@ -274,6 +291,7 @@
       return {
         phoneNumber: activation.phoneNumber,
         activation,
+        entryMode: 'auto',
       };
     }
 
@@ -314,7 +332,7 @@
       }
 
       const signupPhone = await resolveSignupPhoneForStep2(state);
-      const { phoneNumber, activation } = signupPhone;
+      const { phoneNumber, activation, entryMode } = signupPhone;
       let step2Result = await submitSignupPhone(phoneNumber, activation, {
         timeoutMs: 45000,
         retryDelayMs: 700,
@@ -365,6 +383,7 @@
         accountIdentifier: phoneNumber,
         signupPhoneNumber: phoneNumber,
         signupPhoneActivation: activation || null,
+        signupPhoneEntryMode: entryMode || (activation ? 'auto' : 'manual'),
         nextSignupState: landingResult?.state || step2Result?.state || 'password_page',
         nextSignupUrl: landingResult?.url || step2Result?.url || '',
         skippedPasswordStep: landingResult?.state === 'phone_verification_page' || landingResult?.state === 'profile_page',

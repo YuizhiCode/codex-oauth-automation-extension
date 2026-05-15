@@ -502,6 +502,8 @@ const PERSISTED_SETTING_DEFAULTS = {
   autoRunDelayMinutes: 30,
   autoStepDelaySeconds: null,
   phoneVerificationEnabled: false,
+  signupPhonePoolEnabled: false,
+  signupPhonePool: [],
   phoneSmsProvider: DEFAULT_PHONE_SMS_PROVIDER,
   phoneSmsProviderOrder: DEFAULT_PHONE_SMS_PROVIDER_ORDER,
   verificationResendCount: DEFAULT_VERIFICATION_RESEND_COUNT,
@@ -543,6 +545,7 @@ const PERSISTED_SETTING_DEFAULTS = {
   cloudflareTempEmailCustomAuth: '',
   cloudflareTempEmailReceiveMailbox: '',
   cloudflareTempEmailUseRandomSubdomain: false,
+  cloudflareTempEmailCustomSubdomainPrefix: '',
   cloudflareTempEmailDomain: '',
   cloudflareTempEmailDomains: [],
   hotmailAccounts: [],
@@ -1365,6 +1368,7 @@ function getCloudflareTempEmailConfig(state = {}) {
     customAuth: String(state.cloudflareTempEmailCustomAuth || ''),
     receiveMailbox: normalizeCloudflareTempEmailReceiveMailbox(state.cloudflareTempEmailReceiveMailbox),
     useRandomSubdomain: Boolean(state.cloudflareTempEmailUseRandomSubdomain),
+    customSubdomainPrefix: normalizeCloudflareTempEmailDomain(String(state.cloudflareTempEmailCustomSubdomainPrefix || '').trim()),
     domain: normalizeCloudflareTempEmailDomain(state.cloudflareTempEmailDomain),
     domains: normalizeCloudflareTempEmailDomains(state.cloudflareTempEmailDomains),
   };
@@ -1534,6 +1538,28 @@ function normalizeFiveSimCountryOrder(value = []) {
       break;
     }
   }
+
+  return normalized;
+}
+
+function normalizeSignupPhonePool(value = []) {
+  const source = Array.isArray(value)
+    ? value
+    : String(value || '')
+      .split(/[\r\n,，;；]+/)
+      .map((entry) => String(entry || '').trim())
+      .filter(Boolean);
+  const normalized = [];
+  const seen = new Set();
+
+  source.forEach((entry) => {
+    const phone = String(entry || '').trim();
+    if (!phone || seen.has(phone)) {
+      return;
+    }
+    seen.add(phone);
+    normalized.push(phone);
+  });
 
   return normalized;
 }
@@ -1711,6 +1737,7 @@ function normalizePersistentSettingValue(key, value) {
     case 'autoRunSkipFailures':
     case 'autoRunDelayEnabled':
     case 'phoneVerificationEnabled':
+    case 'signupPhonePoolEnabled':
     case 'plusModeEnabled':
     case 'gptOnlyModeEnabled':
       return Boolean(value);
@@ -1747,10 +1774,14 @@ function normalizePersistentSettingValue(key, value) {
     case 'customMailProviderPool':
     case 'customEmailPool':
       return normalizeCustomEmailPool(value);
+    case 'signupPhonePool':
+      return normalizeSignupPhonePool(value);
     case 'autoDeleteUsedIcloudAlias':
     case 'accountRunHistoryTextEnabled':
     case 'cloudflareTempEmailUseRandomSubdomain':
       return Boolean(value);
+    case 'cloudflareTempEmailCustomSubdomainPrefix':
+      return normalizeCloudflareTempEmailDomain(String(value || '').trim());
     case 'icloudHostPreference':
       return normalizeIcloudHost(value) || 'auto';
     case 'icloudTargetMailboxType':
@@ -6120,6 +6151,7 @@ async function finalizePhoneActivationAfterSuccessfulFlow(state) {
     signupPhoneNumber: '',
     signupPhoneActivation: null,
     signupPhoneCompletedActivation: null,
+    signupPhoneEntryMode: null,
     signupPhoneVerificationRequestedAt: null,
     signupPhoneVerificationPurpose: '',
     currentPhoneVerificationCode: '',
@@ -9232,16 +9264,26 @@ async function runAutoSequenceFromStep(startStep, context = {}) {
         const preservedState = await getState();
         const preservedEmail = String(preservedState.email || '').trim();
         const preservedPassword = String(preservedState.password || '').trim();
+        const shouldRegenerateCloudflareTempEmail = String(preservedState.emailGenerator || '').trim().toLowerCase() === CLOUDFLARE_TEMP_EMAIL_GENERATOR
+          && Boolean(preservedState.cloudflareTempEmailUseRandomSubdomain);
         const emailSuffix = preservedEmail ? `当前邮箱：${preservedEmail}；` : '';
+        const restartLogLabel = shouldRegenerateCloudflareTempEmail
+          ? `步骤 4：执行失败，准备清空当前邮箱并回到步骤 1 重新生成随机子域邮箱（第 ${step4RestartCount} 次重开）。${emailSuffix}原因：${getErrorMessage(err)}`
+          : `步骤 4：执行失败，准备沿用当前邮箱回到步骤 1 重新开始（第 ${step4RestartCount} 次重开）。${emailSuffix}原因：${getErrorMessage(err)}`;
+        const invalidateLogLabel = shouldRegenerateCloudflareTempEmail
+          ? `步骤 4 报错后准备回到步骤 1 重新生成随机子域邮箱（第 ${step4RestartCount} 次重开）`
+          : `步骤 4 报错后准备回到步骤 1 沿用当前邮箱重试（第 ${step4RestartCount} 次重开）`;
         await addLog(
-          `步骤 4：执行失败，准备沿用当前邮箱回到步骤 1 重新开始（第 ${step4RestartCount} 次重开）。${emailSuffix}原因：${getErrorMessage(err)}`,
+          restartLogLabel,
           'warn'
         );
         await invalidateDownstreamAfterStepRestart(1, {
-          logLabel: `步骤 4 报错后准备回到步骤 1 沿用当前邮箱重试（第 ${step4RestartCount} 次重开）`,
+          logLabel: invalidateLogLabel,
         });
         const restorePayload = {};
-        if (preservedEmail) restorePayload.email = preservedEmail;
+        restorePayload.email = shouldRegenerateCloudflareTempEmail
+          ? null
+          : preservedEmail || null;
         if (preservedPassword) restorePayload.password = preservedPassword;
         if (Object.keys(restorePayload).length) {
           await setState(restorePayload);
@@ -9486,6 +9528,10 @@ const verificationFlowHelpers = self.MultiPageBackgroundVerificationFlow?.create
 const phoneVerificationHelpers = self.MultiPageBackgroundPhoneVerification?.createPhoneVerificationHelpers({
   addLog,
   broadcastDataUpdate,
+  confirmCustomVerificationStepBypassRequest: (step) => chrome.runtime.sendMessage({
+    type: 'REQUEST_CUSTOM_VERIFICATION_BYPASS_CONFIRMATION',
+    payload: { step, context: 'phone' },
+  }),
   DEFAULT_FIVE_SIM_BASE_URL,
   DEFAULT_FIVE_SIM_COUNTRY_ORDER,
   DEFAULT_FIVE_SIM_OPERATOR,

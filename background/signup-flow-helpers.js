@@ -364,7 +364,23 @@
     }
 
     async function resolveSignupEmailForFlow(state, options = {}) {
-      let resolvedEmail = state.email;
+      const accountIdentifierType = String(state?.accountIdentifierType || '').trim().toLowerCase();
+      const resolvedSignupMethod = String(state?.resolvedSignupMethod || '').trim().toLowerCase();
+      const configuredSignupMethod = String(state?.signupMethod || '').trim().toLowerCase();
+      const phoneSignupNumber = String(
+        state?.signupPhoneNumber
+        || (accountIdentifierType === 'phone' ? state?.accountIdentifier : '')
+        || state?.signupPhoneCompletedActivation?.phoneNumber
+        || state?.signupPhoneActivation?.phoneNumber
+        || ''
+      ).trim();
+      const isPhoneSignup = resolvedSignupMethod === 'phone'
+        || configuredSignupMethod === 'phone'
+        || accountIdentifierType === 'phone'
+        || Boolean(phoneSignupNumber);
+      const shouldForceFreshCloudflareTempEmail = isPhoneSignup
+        && String(state?.emailGenerator || '').trim().toLowerCase() === 'cloudflare-temp-email';
+      let resolvedEmail = shouldForceFreshCloudflareTempEmail ? '' : state.email;
       let generatedEmailAlreadyPersisted = false;
       if (isHotmailProvider(state)) {
         const account = await ensureHotmailAccountForFlow({
@@ -389,7 +405,7 @@
         if (!isReusableGeneratedAliasEmail?.(state, resolvedEmail)) {
           resolvedEmail = buildGeneratedAliasEmail(state);
         }
-      } else if (!resolvedEmail && typeof fetchGeneratedEmail === 'function') {
+      } else if ((!resolvedEmail || shouldForceFreshCloudflareTempEmail) && typeof fetchGeneratedEmail === 'function') {
         resolvedEmail = await fetchGeneratedEmail(state, options);
         generatedEmailAlreadyPersisted = true;
       }

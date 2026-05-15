@@ -297,6 +297,24 @@
           if (payload.email) {
             await setEmailState(payload.email);
           }
+          if (
+            payload.signupPhoneNumber !== undefined
+            || payload.signupPhoneActivation !== undefined
+            || payload.signupPhoneEntryMode !== undefined
+            || payload.accountIdentifierType !== undefined
+            || payload.accountIdentifier !== undefined
+          ) {
+            const updates = {};
+            if (payload.signupPhoneNumber !== undefined) updates.signupPhoneNumber = String(payload.signupPhoneNumber || '').trim();
+            if (payload.signupPhoneActivation !== undefined) updates.signupPhoneActivation = payload.signupPhoneActivation || null;
+            if (payload.signupPhoneEntryMode !== undefined) updates.signupPhoneEntryMode = payload.signupPhoneEntryMode || null;
+            if (payload.accountIdentifierType !== undefined) updates.accountIdentifierType = payload.accountIdentifierType || null;
+            if (payload.accountIdentifier !== undefined) updates.accountIdentifier = payload.accountIdentifier || '';
+            if (Object.keys(updates).length) {
+              await setState(updates);
+              broadcastDataUpdate(updates);
+            }
+          }
           if (payload.skipRegistrationFlow) {
             const latestState = await getState();
             for (const skipStep of [3, 4, 5]) {
@@ -441,6 +459,7 @@
               signupPhoneNumber: '',
               signupPhoneActivation: null,
               signupPhoneCompletedActivation: null,
+              signupPhoneEntryMode: null,
               signupPhoneVerificationRequestedAt: null,
               signupPhoneVerificationPurpose: '',
               currentPhoneVerificationCode: '',
@@ -1032,6 +1051,7 @@
               signupPhoneNumber: phoneNumber,
               signupPhoneActivation: null,
               signupPhoneCompletedActivation: null,
+              signupPhoneEntryMode: 'manual',
               signupPhoneVerificationRequestedAt: null,
               signupPhoneVerificationPurpose: '',
               accountIdentifierType: 'phone',
@@ -1041,6 +1061,7 @@
               signupPhoneNumber: '',
               signupPhoneActivation: null,
               signupPhoneCompletedActivation: null,
+              signupPhoneEntryMode: null,
               signupPhoneVerificationRequestedAt: null,
               signupPhoneVerificationPurpose: '',
               ...(String(state?.accountIdentifierType || '').trim().toLowerCase() === 'phone'
