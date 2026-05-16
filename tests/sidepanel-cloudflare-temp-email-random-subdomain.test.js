@@ -178,6 +178,56 @@ return {
   assert.deepEqual(api.calls.domainEditMode, [{ editing: false, options: { clearInput: true } }]);
 });
 
+test('cloudflare temp email custom subdomain prefix input marks settings dirty and saves normalized value on blur', async () => {
+  const normalizeBundle = extractFunction('normalizeCloudflareTempEmailCustomSubdomainPrefixValue');
+
+  const api = new Function(`
+let dirtyCalls = [];
+let scheduledAutoSaveCalls = 0;
+let saveSettingsCalls = [];
+const inputTempEmailCustomSubdomainPrefix = {
+  value: '',
+  listeners: {},
+  addEventListener(type, handler) {
+    this.listeners[type] = handler;
+  },
+};
+function markSettingsDirty(isDirty) { dirtyCalls.push(isDirty); }
+function scheduleSettingsAutoSave() { scheduledAutoSaveCalls += 1; }
+function saveSettings(options) {
+  saveSettingsCalls.push(options);
+  return Promise.resolve();
+}
+${normalizeBundle}
+inputTempEmailCustomSubdomainPrefix?.addEventListener('input', () => {
+  markSettingsDirty(true);
+  scheduleSettingsAutoSave();
+});
+inputTempEmailCustomSubdomainPrefix?.addEventListener('blur', () => {
+  inputTempEmailCustomSubdomainPrefix.value = normalizeCloudflareTempEmailCustomSubdomainPrefixValue(
+    inputTempEmailCustomSubdomainPrefix.value
+  );
+  saveSettings({ silent: true }).catch(() => { });
+});
+return {
+  inputTempEmailCustomSubdomainPrefix,
+  getDirtyCalls: () => dirtyCalls,
+  getScheduledAutoSaveCalls: () => scheduledAutoSaveCalls,
+  getSaveSettingsCalls: () => saveSettingsCalls,
+};
+  `)();
+
+  api.inputTempEmailCustomSubdomainPrefix.value = ' .Edu. ';
+  api.inputTempEmailCustomSubdomainPrefix.listeners.input();
+  assert.deepEqual(api.getDirtyCalls(), [true]);
+  assert.equal(api.getScheduledAutoSaveCalls(), 1);
+
+  api.inputTempEmailCustomSubdomainPrefix.listeners.blur();
+  await Promise.resolve();
+  assert.equal(api.inputTempEmailCustomSubdomainPrefix.value, 'edu');
+  assert.deepEqual(api.getSaveSettingsCalls(), [{ silent: true }]);
+});
+
 test('updateMailProviderUI keeps the temp domain selector visible and updates the hint when random subdomain is enabled', () => {
   const bundle = extractFunction('updateMailProviderUI');
 

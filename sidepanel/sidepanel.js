@@ -9185,6 +9185,17 @@ inputTempEmailUseRandomSubdomain?.addEventListener('change', () => {
   saveSettings({ silent: true }).catch(() => { });
 });
 
+inputTempEmailCustomSubdomainPrefix?.addEventListener('input', () => {
+  markSettingsDirty(true);
+  scheduleSettingsAutoSave();
+});
+inputTempEmailCustomSubdomainPrefix?.addEventListener('blur', () => {
+  inputTempEmailCustomSubdomainPrefix.value = normalizeCloudflareTempEmailCustomSubdomainPrefixValue(
+    inputTempEmailCustomSubdomainPrefix.value
+  );
+  saveSettings({ silent: true }).catch(() => { });
+});
+
 inputAutoSkipFailuresThreadIntervalMinutes.addEventListener('input', () => {
   markSettingsDirty(true);
   scheduleSettingsAutoSave();
@@ -9962,11 +9973,18 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       if (message.payload.cloudflareTempEmailUseRandomSubdomain !== undefined && inputTempEmailUseRandomSubdomain) {
         inputTempEmailUseRandomSubdomain.checked = Boolean(message.payload.cloudflareTempEmailUseRandomSubdomain);
       }
+      if (
+        message.payload.cloudflareTempEmailCustomSubdomainPrefix !== undefined
+        && inputTempEmailCustomSubdomainPrefix
+      ) {
+        inputTempEmailCustomSubdomainPrefix.value = message.payload.cloudflareTempEmailCustomSubdomainPrefix || '';
+      }
       if (message.payload.cloudflareTempEmailDomain !== undefined || message.payload.cloudflareTempEmailDomains !== undefined) {
         renderCloudflareTempEmailDomainOptions(message.payload.cloudflareTempEmailDomain || latestState?.cloudflareTempEmailDomain || '');
       }
       if (
         message.payload.cloudflareTempEmailUseRandomSubdomain !== undefined
+        || message.payload.cloudflareTempEmailCustomSubdomainPrefix !== undefined
         || message.payload.cloudflareTempEmailDomain !== undefined
         || message.payload.cloudflareTempEmailDomains !== undefined
       ) {

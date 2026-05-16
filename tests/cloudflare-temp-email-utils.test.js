@@ -101,6 +101,28 @@ test('normalizeCloudflareTempEmailMailApiMessages decodes multipart quoted print
   assert.equal(messages[0].subject, 'Login code');
 });
 
+test('normalizeCloudflareTempEmailMailApiMessages decodes duck forwarded html entities in subject and body', () => {
+  const messages = normalizeCloudflareTempEmailMailApiMessages([
+    {
+      id: 'mail-3',
+      address: 'yuizhi@yuizhi.haoyouyis.com',
+      received_at: '2026-05-15T04:08:51.000Z',
+      source: [
+        'From: "OpenAI (via duck.com)" <forwarded-by@duck.com>',
+        'Subject: =?UTF-8?B?5L2g55qEIE9wZW5BSSDkuLTml7bpqozor4HnoIHvvw==?=',
+        'Content-Type: text/html; charset=UTF-8',
+        '',
+        '<div>&#x4F60;&#x7684; OpenAI &#x4E34;&#x65F6;&#x9A8C;&#x8BC1;&#x7801; &#x8F93;&#x5165;&#x4EE5;&#x7EE7;&#x7EED;&#xFF1A;731091</div>',
+      ].join('\r\n'),
+    },
+  ]);
+
+  assert.equal(messages.length, 1);
+  assert.match(messages[0].subject, /OpenAI 临时验证码/);
+  assert.equal(messages[0].from.emailAddress.address, '"OpenAI (via duck.com)" <forwarded-by@duck.com>');
+  assert.match(messages[0].bodyPreview, /你的 OpenAI 临时验证码 输入以继续：731091/);
+});
+
 test('getCloudflareTempEmailAddressFromResponse supports direct and nested response shapes', () => {
   assert.equal(getCloudflareTempEmailAddressFromResponse({ address: 'one@example.com' }), 'one@example.com');
   assert.equal(getCloudflareTempEmailAddressFromResponse({ data: { address: 'two@example.com' } }), 'two@example.com');

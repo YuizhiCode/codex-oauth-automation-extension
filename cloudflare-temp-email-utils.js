@@ -246,16 +246,39 @@
   }
 
   function stripHtmlTags(value = '') {
-    return String(value || '')
+    return decodeHtmlEntities(String(value || '')
       .replace(/<style[\s\S]*?<\/style>/gi, ' ')
       .replace(/<script[\s\S]*?<\/script>/gi, ' ')
       .replace(/<[^>]+>/g, ' ')
+    )
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function decodeHtmlEntities(value = '') {
+    return String(value || '')
+      .replace(/&#x([0-9a-f]+);/gi, (_match, hex) => {
+        try {
+          const codePoint = Number.parseInt(hex, 16);
+          return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : _match;
+        } catch {
+          return _match;
+        }
+      })
+      .replace(/&#(\d+);/g, (_match, decimal) => {
+        try {
+          const codePoint = Number.parseInt(decimal, 10);
+          return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : _match;
+        } catch {
+          return _match;
+        }
+      })
       .replace(/&nbsp;/gi, ' ')
       .replace(/&amp;/gi, '&')
       .replace(/&lt;/gi, '<')
       .replace(/&gt;/gi, '>')
-      .replace(/\s+/g, ' ')
-      .trim();
+      .replace(/&quot;/gi, '"')
+      .replace(/&apos;/gi, "'");
   }
 
   function decodeMimeBody(bodyText = '', headers = {}) {
@@ -329,23 +352,23 @@
     ]));
     const raw = firstNonEmptyString([row.raw, row.source, row.mime, row.message]);
     const parsedMime = raw ? extractTextFromMime(raw) : { headers: {}, text: '' };
-    const subject = decodeMimeEncodedWords(firstNonEmptyString([
+    const subject = decodeHtmlEntities(decodeMimeEncodedWords(firstNonEmptyString([
       row.subject,
       parsedMime.headers.subject,
-    ]));
-    const fromAddress = decodeMimeEncodedWords(firstNonEmptyString([
+    ])));
+    const fromAddress = decodeHtmlEntities(decodeMimeEncodedWords(firstNonEmptyString([
       row.from,
       row.sender,
       row.mail_from,
       parsedMime.headers.from,
-    ]));
-    const bodyPreview = firstNonEmptyString([
+    ])));
+    const bodyPreview = decodeHtmlEntities(firstNonEmptyString([
       row.text,
       row.preview,
       row.body,
       parsedMime.text,
       raw,
-    ]).replace(/\s+/g, ' ').trim();
+    ])).replace(/\s+/g, ' ').trim();
 
     return {
       id: firstNonEmptyString([row.id, row.mail_id]),

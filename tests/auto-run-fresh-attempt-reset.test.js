@@ -114,6 +114,14 @@ let currentState = {
   inbucketMailbox: '',
   cloudflareDomain: '',
   cloudflareDomains: [],
+  cloudflareTempEmailBaseUrl: 'https://temp.example.com',
+  cloudflareTempEmailAdminAuth: 'admin-secret',
+  cloudflareTempEmailCustomAuth: 'custom-secret',
+  cloudflareTempEmailReceiveMailbox: 'relay@example.com',
+  cloudflareTempEmailUseRandomSubdomain: true,
+  cloudflareTempEmailCustomSubdomainPrefix: 'edu',
+  cloudflareTempEmailDomain: 'mail.temp.example.com',
+  cloudflareTempEmailDomains: ['mail.temp.example.com'],
   reusablePhoneActivation: {
     activationId: '123456',
     phoneNumber: '66959916439',
@@ -176,6 +184,14 @@ async function resetState() {
     inbucketMailbox: prev.inbucketMailbox,
     cloudflareDomain: prev.cloudflareDomain,
     cloudflareDomains: [...(prev.cloudflareDomains || [])],
+    cloudflareTempEmailBaseUrl: prev.cloudflareTempEmailBaseUrl,
+    cloudflareTempEmailAdminAuth: prev.cloudflareTempEmailAdminAuth,
+    cloudflareTempEmailCustomAuth: prev.cloudflareTempEmailCustomAuth,
+    cloudflareTempEmailReceiveMailbox: prev.cloudflareTempEmailReceiveMailbox,
+    cloudflareTempEmailUseRandomSubdomain: prev.cloudflareTempEmailUseRandomSubdomain,
+    cloudflareTempEmailCustomSubdomainPrefix: prev.cloudflareTempEmailCustomSubdomainPrefix,
+    cloudflareTempEmailDomain: prev.cloudflareTempEmailDomain,
+    cloudflareTempEmailDomains: [...(prev.cloudflareTempEmailDomains || [])],
     tabRegistry: { ...(prev.tabRegistry || {}) },
     sourceLastUrls: { ...(prev.sourceLastUrls || {}) },
     accounts: Array.isArray(prev.accounts) ? prev.accounts.map((account) => ({ ...account })) : [],
@@ -523,6 +539,14 @@ return {
   assert.strictEqual(snapshot.currentState.autoRunSessionId, 0, 'session id should be cleared after completion');
   assert.strictEqual(snapshot.currentState.gmailBaseEmail, 'demo@gmail.com', 'gmail base email should survive fresh-attempt reset');
   assert.strictEqual(snapshot.currentState.mail2925BaseEmail, 'demo@2925.com', '2925 base email should survive fresh-attempt reset');
+  assert.strictEqual(snapshot.currentState.cloudflareTempEmailUseRandomSubdomain, true, 'random subdomain setting should survive fresh-attempt reset');
+  assert.strictEqual(snapshot.currentState.cloudflareTempEmailCustomSubdomainPrefix, 'edu', 'custom subdomain prefix should survive fresh-attempt reset');
+  assert.strictEqual(snapshot.currentState.cloudflareTempEmailDomain, 'mail.temp.example.com', 'temp email domain should survive fresh-attempt reset');
+  assert.deepStrictEqual(
+    snapshot.currentState.cloudflareTempEmailDomains,
+    ['mail.temp.example.com'],
+    'temp email domain list should survive fresh-attempt reset'
+  );
   assert.deepStrictEqual(
     snapshot.currentState.reusablePhoneActivation,
     {

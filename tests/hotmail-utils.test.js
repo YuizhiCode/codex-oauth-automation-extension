@@ -371,6 +371,30 @@ test('pickVerificationMessageWithTimeFallback can ignore afterTimestamp while ke
   assert.equal(result.usedTimeFallback, true);
 });
 
+test('pickVerificationMessageWithTimeFallback matches duck forwarded chinese openai verification mail', () => {
+  const messages = [
+    {
+      id: 'duck-forwarded-mail',
+      subject: '你的 OpenAI 临时验证码',
+      from: { emailAddress: { address: '"OpenAI (via duck.com)" <forwarded-by@duck.com>' } },
+      bodyPreview: '你的 OpenAI 临时验证码 输入以继续：731091',
+      receivedDateTime: '2026-05-15T04:08:51.000Z',
+    },
+  ];
+
+  const result = pickVerificationMessageWithTimeFallback(messages, {
+    afterTimestamp: Date.UTC(2026, 4, 15, 4, 8, 0),
+    senderFilters: ['openai', 'noreply', 'verify', 'auth', 'chatgpt', 'duckduckgo', 'forward'],
+    subjectFilters: ['verify', 'verification', 'code', '验证码', 'confirm', 'login'],
+    excludeCodes: [],
+  });
+
+  assert.equal(result.match.message.id, 'duck-forwarded-mail');
+  assert.equal(result.match.code, '731091');
+  assert.equal(result.usedRelaxedFilters, false);
+  assert.equal(result.usedTimeFallback, false);
+});
+
 test('buildHotmailMailApiLatestUrl includes email, client id, refresh token, and mailbox', () => {
   const url = new URL(buildHotmailMailApiLatestUrl({
     clientId: 'client-123',
