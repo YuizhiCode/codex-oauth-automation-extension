@@ -3,6 +3,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 
 const source = fs.readFileSync('sidepanel/update-service.js', 'utf8');
+const CACHE_KEY = 'flowpilot-release-snapshot-v1';
+const LEGACY_CACHE_KEY = 'multipage-release-snapshot-v1';
 
 function createUpdateService(options = {}) {
   const manifest = options.manifest || {
@@ -27,8 +29,14 @@ function createUpdateService(options = {}) {
 
   if (options.cachedSnapshot) {
     cache.set(
-      'multipage-release-snapshot-v1',
+      CACHE_KEY,
       JSON.stringify(options.cachedSnapshot)
+    );
+  }
+  if (options.legacyCachedSnapshot) {
+    cache.set(
+      LEGACY_CACHE_KEY,
+      JSON.stringify(options.legacyCachedSnapshot)
     );
   }
 
@@ -200,6 +208,48 @@ test('getReleaseSnapshot reorders cached releases before choosing latest version
     snapshot.newerReleases.map((release) => release.displayVersion),
     ['FlowPilot1.1']
   );
+});
+
+test('getReleaseSnapshot ignores legacy repository cache after FlowPilot rename', async () => {
+  const { api, getFetchCalls } = createUpdateService({
+    legacyCachedSnapshot: {
+      fetchedAt: Date.now(),
+      releases: [
+        {
+          version: '1.1',
+          displayVersion: 'Ultra1.1',
+          family: 'ultra',
+          title: '',
+          url: 'https://github.com/QLHazyCoder/codex-oauth-automation-extension/releases/tag/Ultra1.1',
+          publishedAt: '2026-04-19T00:00:00.000Z',
+          notes: [],
+        },
+      ],
+    },
+    fetchImpl: async () => ({
+      ok: true,
+      async json() {
+        return [
+          {
+            tag_name: 'FlowPilot1.1',
+            name: 'FlowPilot1.1',
+            html_url: 'https://github.com/QLHazyCoder/FlowPilot/releases/tag/FlowPilot1.1',
+            published_at: '2026-04-20T00:00:00.000Z',
+            body: '- current release',
+            draft: false,
+            prerelease: false,
+          },
+        ];
+      },
+    }),
+  });
+
+  const snapshot = await api.getReleaseSnapshot();
+
+  assert.equal(getFetchCalls(), 1);
+  assert.equal(snapshot.logUrl, 'https://github.com/QLHazyCoder/FlowPilot/releases/tag/FlowPilot1.1');
+  assert.equal(api.releasesPageUrl, 'https://github.com/QLHazyCoder/FlowPilot/releases');
+  assert.equal(api.repositoryUrl, 'https://github.com/QLHazyCoder/FlowPilot');
 });
 
 test('getReleaseSnapshot suppresses an ignored latest update until a newer release appears', async () => {

@@ -3,8 +3,8 @@
   const GITHUB_REPO = 'FlowPilot';
   const RELEASES_PAGE_URL = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases`;
   const RELEASES_API_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases?per_page=10`;
-  const CACHE_KEY = 'multipage-release-snapshot-v1';
-  const IGNORED_UPDATE_VERSION_KEY = 'multipage-ignored-release-version-v1';
+  const CACHE_KEY = 'flowpilot-release-snapshot-v1';
+  const IGNORED_UPDATE_VERSION_KEY = 'flowpilot-ignored-release-version-v1';
   const CACHE_TTL_MS = 60 * 60 * 1000;
   const FETCH_TIMEOUT_MS = 8000;
   const MAX_RELEASES = 10;
