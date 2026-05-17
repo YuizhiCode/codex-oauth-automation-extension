@@ -5717,7 +5717,7 @@ function renderReleaseSnapshot(snapshot) {
 }
 
 async function initializeReleaseInfo() {
-  const fallbackReleaseUrl = sidepanelUpdateService?.releasesPageUrl || 'https://github.com/QLHazyCoder/codex-oauth-automation-extension/releases';
+  const fallbackReleaseUrl = sidepanelUpdateService?.releasesPageUrl || 'https://github.com/YuizhiCode/codex-oauth-automation-extension/releases';
 
   if (btnReleaseLog) {
     btnReleaseLog.onclick = () => openExternalUrl(currentReleaseSnapshot?.logUrl || fallbackReleaseUrl);
