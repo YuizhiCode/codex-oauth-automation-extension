@@ -80,6 +80,9 @@ test('sidepanel html exposes phone verification toggle and dedicated HeroSMS row
   assert.match(html, /id="hero-sms-country-selected"/);
   assert.doesNotMatch(html, /id="select-hero-sms-country-fallback"/);
   assert.match(html, /id="row-hero-sms-api-key"/);
+  assert.match(html, /id="row-smsbower-api-key"/);
+  assert.match(html, /id="input-smsbower-api-key"/);
+  assert.match(html, /value="smsbower">SMSBower/);
   assert.match(html, /id="row-hero-sms-max-price"/);
   assert.match(html, /id="input-hero-sms-min-price"/);
   assert.match(html, /id="input-hero-sms-max-price"/);
@@ -508,11 +511,13 @@ test('phone sms provider order menu renders selected providers instead of openin
 const PHONE_SMS_PROVIDER_HERO = 'hero-sms';
 const PHONE_SMS_PROVIDER_FIVE_SIM = '5sim';
 const PHONE_SMS_PROVIDER_NEXSMS = 'nexsms';
+const PHONE_SMS_PROVIDER_SMSBOWER = 'smsbower';
 const DEFAULT_PHONE_SMS_PROVIDER = PHONE_SMS_PROVIDER_HERO;
 const DEFAULT_PHONE_SMS_PROVIDER_ORDER = [
   PHONE_SMS_PROVIDER_HERO,
   PHONE_SMS_PROVIDER_FIVE_SIM,
   PHONE_SMS_PROVIDER_NEXSMS,
+  PHONE_SMS_PROVIDER_SMSBOWER,
 ];
 
 class FakeClassList {
@@ -620,6 +625,7 @@ const selectPhoneSmsProviderOrder = {
     { value: 'hero-sms', textContent: 'HeroSMS', selected: true },
     { value: '5sim', textContent: '5sim', selected: true },
     { value: 'nexsms', textContent: 'NexSMS', selected: false },
+    { value: 'smsbower', textContent: 'SMSBower', selected: false },
   ],
 };
 const phoneSmsProviderOrderMenu = new FakeElement('div');
@@ -651,14 +657,16 @@ return {
   });
 
   const items = api.phoneSmsProviderOrderMenu.querySelectorAll('.phone-sms-provider-order-menu-item');
-  assert.equal(items.length, 3);
+  assert.equal(items.length, 4);
   assert.equal(items[0].children[0].textContent, 'NexSMS');
   assert.equal(items[0].children[1].textContent, '');
-  assert.equal(items[1].children[0].textContent, '5sim');
-  assert.equal(items[1].children[1].textContent, '✓ 1');
-  assert.equal(items[2].children[0].textContent, 'HeroSMS');
-  assert.equal(items[2].children[1].textContent, '✓ 2');
-  assert.equal(api.btnPhoneSmsProviderOrderMenu.textContent, '5sim / HeroSMS (2/3)');
+  assert.equal(items[1].children[0].textContent, 'SMSBower');
+  assert.equal(items[1].children[1].textContent, '');
+  assert.equal(items[2].children[0].textContent, '5sim');
+  assert.equal(items[2].children[1].textContent, '✓ 1');
+  assert.equal(items[3].children[0].textContent, 'HeroSMS');
+  assert.equal(items[3].children[1].textContent, '✓ 2');
+  assert.equal(api.btnPhoneSmsProviderOrderMenu.textContent, '5sim / HeroSMS (2/4)');
   assert.equal(api.displayPhoneSmsProviderOrder.textContent, '1. 5sim → 2. HeroSMS');
 });
 
@@ -667,11 +675,13 @@ test('phone sms provider order menu keeps selected providers at the end, shows c
 const PHONE_SMS_PROVIDER_HERO = 'hero-sms';
 const PHONE_SMS_PROVIDER_FIVE_SIM = '5sim';
 const PHONE_SMS_PROVIDER_NEXSMS = 'nexsms';
+const PHONE_SMS_PROVIDER_SMSBOWER = 'smsbower';
 const DEFAULT_PHONE_SMS_PROVIDER = PHONE_SMS_PROVIDER_HERO;
 const DEFAULT_PHONE_SMS_PROVIDER_ORDER = [
   PHONE_SMS_PROVIDER_HERO,
   PHONE_SMS_PROVIDER_FIVE_SIM,
   PHONE_SMS_PROVIDER_NEXSMS,
+  PHONE_SMS_PROVIDER_SMSBOWER,
 ];
 
 class FakeClassList {
@@ -786,6 +796,7 @@ const selectPhoneSmsProviderOrder = {
     { value: 'hero-sms', textContent: 'HeroSMS', selected: true },
     { value: '5sim', textContent: '5sim', selected: false },
     { value: 'nexsms', textContent: 'NexSMS', selected: true },
+    { value: 'smsbower', textContent: 'SMSBower', selected: false },
   ],
 };
 const phoneSmsProviderOrderMenuShell = new FakeElement('div');
@@ -875,13 +886,15 @@ return {
   });
 
   const items = api.phoneSmsProviderOrderMenu.querySelectorAll('.phone-sms-provider-order-menu-item');
-  assert.equal(items.length, 3);
+  assert.equal(items.length, 4);
   assert.equal(items[0].children[0].textContent, '5sim');
   assert.equal(items[0].children[1].textContent, '');
-  assert.equal(items[1].children[0].textContent, 'NexSMS');
-  assert.equal(items[1].children[1].textContent, '✓ 1');
-  assert.equal(items[2].children[0].textContent, 'HeroSMS');
-  assert.equal(items[2].children[1].textContent, '✓ 2');
+  assert.equal(items[1].children[0].textContent, 'SMSBower');
+  assert.equal(items[1].children[1].textContent, '');
+  assert.equal(items[2].children[0].textContent, 'NexSMS');
+  assert.equal(items[2].children[1].textContent, '✓ 1');
+  assert.equal(items[3].children[0].textContent, 'HeroSMS');
+  assert.equal(items[3].children[1].textContent, '✓ 2');
 
   api.setPhoneSmsProviderOrderMenuOpen(true);
   assert.equal(api.btnPhoneSmsProviderOrderMenu.getAttribute('aria-expanded'), 'true');
@@ -1121,6 +1134,7 @@ const inputFiveSimProduct = { value: 'openai' };
 const inputNexSmsApiKey = { value: 'nex-key' };
 const inputNexSmsServiceCode = { value: 'ot' };
 const inputHeroSmsApiKey = { value: 'demo-key' };
+const inputSmsbowerApiKey = { value: 'sms-key' };
 const inputHeroSmsReuseEnabled = { checked: true };
 const selectHeroSmsAcquirePriority = { value: 'price' };
 const inputHeroSmsMinPrice = { value: '0.05' };
@@ -1157,6 +1171,7 @@ const DEFAULT_HERO_SMS_COUNTRY_LABEL = 'Thailand';
 const PHONE_SMS_PROVIDER_HERO = 'hero-sms';
 const PHONE_SMS_PROVIDER_FIVE_SIM = '5sim';
 const PHONE_SMS_PROVIDER_NEXSMS = 'nexsms';
+const PHONE_SMS_PROVIDER_SMSBOWER = 'smsbower';
 const selectHeroSmsCountry = {
   value: '52',
   selectedIndex: 0,
@@ -1166,15 +1181,16 @@ function normalizePhoneSmsProviderValue(value = '') {
   const normalized = String(value || '').trim().toLowerCase();
   if (normalized === '5sim') return '5sim';
   if (normalized === 'nexsms') return 'nexsms';
+  if (normalized === 'smsbower' || normalized === 'sms-bower') return 'smsbower';
   return 'hero-sms';
 }
 function normalizePhoneSmsProviderOrderValue(value = [], fallbackOrder = []) {
   const source = Array.isArray(value) ? value : [];
   if (source.length) {
-    return source.map((entry) => normalizePhoneSmsProviderValue(entry)).slice(0, 3);
+    return source.map((entry) => normalizePhoneSmsProviderValue(entry)).slice(0, 4);
   }
   return Array.isArray(fallbackOrder)
-    ? fallbackOrder.map((entry) => normalizePhoneSmsProviderValue(entry)).slice(0, 3)
+    ? fallbackOrder.map((entry) => normalizePhoneSmsProviderValue(entry)).slice(0, 4)
     : [];
 }
 function getSelectedPhoneSmsProvider() { return normalizePhoneSmsProviderValue(selectPhoneSmsProvider.value); }
@@ -1248,6 +1264,7 @@ return { collectSettingsPayload };
   assert.equal(payload.phoneSmsProvider, '5sim');
   assert.deepStrictEqual(payload.phoneSmsProviderOrder, ['5sim', 'hero-sms']);
   assert.equal(payload.heroSmsApiKey, 'demo-key');
+  assert.equal(payload.smsbowerApiKey, 'sms-key');
   assert.equal(payload.fiveSimApiKey, 'five-sim-key');
   assert.deepStrictEqual(payload.fiveSimCountryOrder, ['thailand', 'england']);
   assert.equal(payload.fiveSimOperator, 'any');

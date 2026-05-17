@@ -23,6 +23,7 @@
       DEFAULT_NEX_SMS_BASE_URL = 'https://api.nexsms.net',
       DEFAULT_NEX_SMS_COUNTRY_ORDER = [1],
       DEFAULT_NEX_SMS_SERVICE_CODE = 'ot',
+      DEFAULT_SMSBOWER_BASE_URL = 'https://smsbower.page/stubs/handler_api.php',
       HERO_SMS_COUNTRY_ID = 52,
       HERO_SMS_COUNTRY_LABEL = 'Thailand',
       HERO_SMS_SERVICE_CODE = 'dr',
@@ -66,6 +67,7 @@
     const PHONE_SMS_PROVIDER_HERO = 'hero-sms';
     const PHONE_SMS_PROVIDER_5SIM = '5sim';
     const PHONE_SMS_PROVIDER_NEXSMS = 'nexsms';
+    const PHONE_SMS_PROVIDER_SMSBOWER = 'smsbower';
     const DEFAULT_PHONE_SMS_PROVIDER = PHONE_SMS_PROVIDER_HERO;
     const PHONE_CODE_TIMEOUT_ERROR_PREFIX = 'PHONE_CODE_TIMEOUT::';
     const PHONE_RESTART_STEP7_ERROR_PREFIX = 'PHONE_RESTART_STEP7::';
@@ -95,6 +97,9 @@
       }
       if (normalized === PHONE_SMS_PROVIDER_NEXSMS) {
         return PHONE_SMS_PROVIDER_NEXSMS;
+      }
+      if (normalized === PHONE_SMS_PROVIDER_SMSBOWER || normalized === 'sms-bower') {
+        return PHONE_SMS_PROVIDER_SMSBOWER;
       }
       return PHONE_SMS_PROVIDER_HERO;
     }
@@ -198,6 +203,29 @@
         .toLowerCase()
         .replace(/[^a-z0-9_-]/g, '');
       return fallbackNormalized || 'ot';
+    }
+
+    function isHeroProtocolProvider(provider = '') {
+      const normalized = normalizePhoneSmsProvider(provider);
+      return normalized === PHONE_SMS_PROVIDER_HERO || normalized === PHONE_SMS_PROVIDER_SMSBOWER;
+    }
+
+    function getHeroProtocolProviderLabel(provider = '') {
+      return normalizePhoneSmsProvider(provider) === PHONE_SMS_PROVIDER_SMSBOWER
+        ? 'SMSBower'
+        : 'HeroSMS';
+    }
+
+    function getHeroProtocolPriceAction(provider = '') {
+      return normalizePhoneSmsProvider(provider) === PHONE_SMS_PROVIDER_SMSBOWER
+        ? 'getPrices'
+        : 'serviceCountRent';
+    }
+
+    function getDefaultPhoneNumberMaxUses(provider = PHONE_SMS_PROVIDER_HERO) {
+      return normalizePhoneSmsProvider(provider) === PHONE_SMS_PROVIDER_SMSBOWER
+        ? 1
+        : DEFAULT_PHONE_NUMBER_MAX_USES;
     }
 
     function normalizePhoneNumberForProvider(value = '', provider = PHONE_SMS_PROVIDER_HERO) {
@@ -460,7 +488,7 @@
           1,
           Math.floor(
             Number(record.maxUses)
-            || (provider === PHONE_SMS_PROVIDER_NEXSMS ? 1 : DEFAULT_PHONE_NUMBER_MAX_USES)
+            || (provider === PHONE_SMS_PROVIDER_NEXSMS ? 1 : getDefaultPhoneNumberMaxUses(provider))
           )
         ),
         ...(statusAction ? { statusAction } : {}),
@@ -831,7 +859,15 @@
       const apiKey = normalizeApiKey(
         provider === PHONE_SMS_PROVIDER_5SIM
           ? state.fiveSimApiKey
-          : (provider === PHONE_SMS_PROVIDER_NEXSMS ? state.nexSmsApiKey : state.heroSmsApiKey)
+          : (
+            provider === PHONE_SMS_PROVIDER_NEXSMS
+              ? state.nexSmsApiKey
+              : (
+                provider === PHONE_SMS_PROVIDER_SMSBOWER
+                  ? (state.smsbowerApiKey || state.heroSmsApiKey)
+                  : state.heroSmsApiKey
+              )
+          )
       );
       if (!apiKey) {
         if (provider === PHONE_SMS_PROVIDER_5SIM) {
@@ -839,6 +875,9 @@
         }
         if (provider === PHONE_SMS_PROVIDER_NEXSMS) {
           throw new Error('NexSMS API key is missing. Save it in the side panel before running the phone flow.');
+        }
+        if (provider === PHONE_SMS_PROVIDER_SMSBOWER) {
+          throw new Error('SMSBower API key is missing. Save it in the side panel before running the phone flow.');
         }
         throw new Error('HeroSMS API key is missing. Save it in the side panel before running the phone flow.');
       }
@@ -866,7 +905,9 @@
       return {
         provider,
         apiKey,
-        baseUrl: normalizeUrl(state.heroSmsBaseUrl, DEFAULT_HERO_SMS_BASE_URL),
+        baseUrl: provider === PHONE_SMS_PROVIDER_SMSBOWER
+          ? normalizeUrl(state.smsbowerBaseUrl, DEFAULT_SMSBOWER_BASE_URL)
+          : normalizeUrl(state.heroSmsBaseUrl, DEFAULT_HERO_SMS_BASE_URL),
       };
     }
 
@@ -902,7 +943,7 @@
             countryId: normalizedFallback?.countryId || HERO_SMS_COUNTRY_ID,
             ...(normalizedFallback?.countryLabel ? { countryLabel: normalizedFallback.countryLabel } : {}),
             successfulUses: normalizedFallback?.successfulUses ?? 0,
-            maxUses: normalizedFallback?.maxUses ?? DEFAULT_PHONE_NUMBER_MAX_USES,
+            maxUses: normalizedFallback?.maxUses ?? getDefaultPhoneNumberMaxUses(normalizedFallback?.provider || PHONE_SMS_PROVIDER_HERO),
             ...(normalizedFallback?.statusAction ? { statusAction: normalizedFallback.statusAction } : {}),
           };
         }
@@ -923,7 +964,7 @@
             countryId: normalizedFallback?.countryId || HERO_SMS_COUNTRY_ID,
             ...(normalizedFallback?.countryLabel ? { countryLabel: normalizedFallback.countryLabel } : {}),
             successfulUses: normalizedFallback?.successfulUses ?? 0,
-            maxUses: normalizedFallback?.maxUses ?? DEFAULT_PHONE_NUMBER_MAX_USES,
+            maxUses: normalizedFallback?.maxUses ?? getDefaultPhoneNumberMaxUses(normalizedFallback?.provider || PHONE_SMS_PROVIDER_HERO),
             ...(normalizedFallback?.statusAction ? { statusAction: normalizedFallback.statusAction } : {}),
           };
         }
@@ -977,7 +1018,7 @@
         return null;
       }
       const config = resolvePhoneConfig(state);
-      if (config.provider !== PHONE_SMS_PROVIDER_HERO) {
+      if (!isHeroProtocolProvider(config.provider)) {
         return null;
       }
       const payload = await fetchHeroSmsPayload(
@@ -1019,7 +1060,7 @@
 
     async function listHeroSmsActiveActivations(state = {}) {
       const config = resolvePhoneConfig(state);
-      if (config.provider !== PHONE_SMS_PROVIDER_HERO) {
+      if (!isHeroProtocolProvider(config.provider)) {
         return [];
       }
       const payload = await fetchHeroSmsPayload(
@@ -1477,13 +1518,15 @@
     }
 
     async function resolveCheapestPhoneActivationPrice(config, countryConfig) {
+      const providerLabel = getHeroProtocolProviderLabel(config.provider);
+      const priceAction = getHeroProtocolPriceAction(config.provider);
       for (let attempt = 1; attempt <= DEFAULT_PHONE_PRICE_LOOKUP_ATTEMPTS; attempt += 1) {
         try {
           const payload = await fetchHeroSmsPayload(config, {
-            action: 'serviceCountRent',
+            action: priceAction,
             service: HERO_SMS_SERVICE_CODE,
             country: countryConfig.id,
-          }, 'HeroSMS serviceCountRent');
+          }, `${providerLabel} ${priceAction}`);
           const price = findLowestHeroSmsPrice(payload);
           if (price !== null) {
             return price;
@@ -1515,6 +1558,8 @@
     }
 
     async function resolvePhoneActivationPricePlan(config, countryConfig, state = {}) {
+      const providerLabel = getHeroProtocolProviderLabel(config.provider);
+      const priceAction = getHeroProtocolPriceAction(config.provider);
       const userLimit = normalizeHeroSmsPriceLimit(state.heroSmsMaxPrice);
       const userMinPrice = normalizeHeroSmsPriceLimit(state.heroSmsMinPrice);
       let priceCandidates = [];
@@ -1522,10 +1567,10 @@
       for (let attempt = 1; attempt <= DEFAULT_PHONE_PRICE_LOOKUP_ATTEMPTS; attempt += 1) {
         try {
           const payload = await fetchHeroSmsPayload(config, {
-            action: 'serviceCountRent',
+            action: priceAction,
             service: HERO_SMS_SERVICE_CODE,
             country: countryConfig.id,
-          }, 'HeroSMS serviceCountRent');
+          }, `${providerLabel} ${priceAction}`);
           priceCandidates = buildSortedUniquePriceCandidates(
             collectHeroSmsPriceCandidates(payload, [])
           );
@@ -1580,7 +1625,7 @@
         query.maxPrice = options.maxPrice;
         query.fixedPrice = 'true';
       }
-      return fetchHeroSmsPayload(config, query, `HeroSMS ${action}`);
+      return fetchHeroSmsPayload(config, query, `${getHeroProtocolProviderLabel(config.provider)} ${action}`);
     }
 
     function formatHeroSmsGetNumberRequestParams(countryConfig, action, maxPrice) {
@@ -1605,7 +1650,7 @@
       while (true) {
         try {
           await addLog(
-            `Step 9: HeroSMS ${action} request params: ${formatHeroSmsGetNumberRequestParams(countryConfig, action, nextMaxPrice)}`,
+            `Step 9: ${getHeroProtocolProviderLabel(config.provider)} ${action} request params: ${formatHeroSmsGetNumberRequestParams(countryConfig, action, nextMaxPrice)}`,
             'info'
           );
           return await fetchPhoneActivationPayload(config, countryConfig, action, {
@@ -1621,7 +1666,7 @@
           ) {
             if (userLimit !== null && updatedMaxPrice > userLimit) {
               throw new Error(
-                `HeroSMS ${action} failed: WRONG_MAX_PRICE requires ${updatedMaxPrice}, which exceeds configured maxPrice=${userLimit}.`
+                `${getHeroProtocolProviderLabel(config.provider)} ${action} failed: WRONG_MAX_PRICE requires ${updatedMaxPrice}, which exceeds configured maxPrice=${userLimit}.`
               );
             }
             nextMaxPrice = updatedMaxPrice;
@@ -1989,6 +2034,7 @@
       if (config.provider === PHONE_SMS_PROVIDER_NEXSMS) {
         return requestNexSmsActivation(state, options);
       }
+      const providerLabel = getHeroProtocolProviderLabel(config.provider);
       const allCountryCandidates = resolveCountryCandidates(state);
       const blockedCountryIds = new Set(
         (Array.isArray(options?.blockedCountryIds) ? options.blockedCountryIds : [])
@@ -2024,7 +2070,7 @@
       for (let round = 1; round <= maxAcquireRounds; round += 1) {
         if (maxAcquireRounds > 1) {
           await addLog(
-            `Step 9: HeroSMS acquiring phone number (round ${round}/${maxAcquireRounds})...`,
+            `Step 9: ${providerLabel} acquiring phone number (round ${round}/${maxAcquireRounds})...`,
             'info'
           );
         }
@@ -2076,7 +2122,9 @@
         for (const attempt of countryAttempts) {
           const countryConfig = attempt.countryConfig;
           const buildFallbackActivation = (_requestAction) => ({
+            provider: config.provider,
             countryId: countryConfig.id,
+            maxUses: getDefaultPhoneNumberMaxUses(config.provider),
           });
           const pricePlan = attempt.pricePlan || await resolvePhoneActivationPricePlan(config, countryConfig, state);
           let noNumbersObservedInCountry = false;
@@ -2115,14 +2163,14 @@
                   continue;
                 }
                 if (isHeroSmsTerminalError(payload)) {
-                  throw new Error(`HeroSMS ${requestAction} failed: ${payloadText || 'empty response'}`);
+                  throw new Error(`${providerLabel} ${requestAction} failed: ${payloadText || 'empty response'}`);
                 }
                 lastFailureText = payloadText || lastFailureText;
-                lastError = new Error(`HeroSMS ${requestAction} failed: ${payloadText || 'empty response'}`);
+                lastError = new Error(`${providerLabel} ${requestAction} failed: ${payloadText || 'empty response'}`);
               } catch (error) {
                 const payloadOrMessage = error?.payload || error?.message;
                 if (isHeroSmsTerminalError(payloadOrMessage)) {
-                  throw new Error(`HeroSMS ${requestAction} failed: ${describeHeroSmsPayload(payloadOrMessage) || 'empty response'}`);
+                  throw new Error(`${providerLabel} ${requestAction} failed: ${describeHeroSmsPayload(payloadOrMessage) || 'empty response'}`);
                 }
                 if (isHeroSmsNoNumbersPayload(payloadOrMessage)) {
                   noNumbersObservedInCountry = true;
@@ -2172,7 +2220,7 @@
           && retryableNoNumberCountries.length > 0
         ) {
           await addLog(
-            `Step 9: HeroSMS has no available numbers (round ${round}/${maxAcquireRounds}); retrying in ${Math.ceil(retryDelayMs / 1000)}s. Countries: ${retryableNoNumberCountries.join(', ')}.`,
+            `Step 9: ${providerLabel} has no available numbers (round ${round}/${maxAcquireRounds}); retrying in ${Math.ceil(retryDelayMs / 1000)}s. Countries: ${retryableNoNumberCountries.join(', ')}.`,
             'warn'
           );
           await sleepWithStop(retryDelayMs);
@@ -2184,13 +2232,13 @@
 
       if (finalNoNumbersByCountry.length) {
         throw new Error(
-          `HeroSMS没有可用的号码 ${countryCandidates.length} 国家候选人(s): ${finalNoNumbersByCountry.join(' | ')}.`
+          `${providerLabel}没有可用的号码 ${countryCandidates.length} 国家候选人(s): ${finalNoNumbersByCountry.join(' | ')}.`
         );
       }
       if (finalLastError) {
         throw finalLastError;
       }
-      throw new Error(`HeroSMS无法获取电话号码。上次状态: ${finalLastFailureText || 'unknown'}.`);
+      throw new Error(`${providerLabel}无法获取电话号码。上次状态: ${finalLastFailureText || 'unknown'}.`);
     }
 
     async function reactivatePhoneActivation(state = {}, activation) {
@@ -2234,14 +2282,17 @@
       if (config.provider === PHONE_SMS_PROVIDER_NEXSMS) {
         throw new Error('NexSMS does not support activation reuse for this flow.');
       }
+      if (config.provider === PHONE_SMS_PROVIDER_SMSBOWER) {
+        throw new Error('SMSBower does not support activation reuse for this flow.');
+      }
       const payload = await fetchHeroSmsPayload(config, {
         action: 'reactivate',
         id: normalizedActivation.activationId,
-      }, 'HeroSMS reactivate');
+      }, `${getHeroProtocolProviderLabel(config.provider)} reactivate`);
       const nextActivation = parseActivationPayload(payload, normalizedActivation);
       if (!nextActivation) {
         const text = describeHeroSmsPayload(payload);
-        throw new Error(`HeroSMS reactivate failed: ${text || 'empty response'}`);
+        throw new Error(`${getHeroProtocolProviderLabel(config.provider)} reactivate failed: ${text || 'empty response'}`);
       }
       return nextActivation;
     }
@@ -2288,12 +2339,14 @@
     }
 
     async function completePhoneActivation(state = {}, activation) {
-      await setPhoneActivationStatus(state, activation, 6, 'HeroSMS setStatus(6)');
+      const providerLabel = getHeroProtocolProviderLabel(activation?.provider || state?.phoneSmsProvider);
+      await setPhoneActivationStatus(state, activation, 6, `${providerLabel} setStatus(6)`);
     }
 
     async function cancelPhoneActivation(state = {}, activation) {
       try {
-        await setPhoneActivationStatus(state, activation, 8, 'HeroSMS setStatus(8)');
+        const providerLabel = getHeroProtocolProviderLabel(activation?.provider || state?.phoneSmsProvider);
+        await setPhoneActivationStatus(state, activation, 8, `${providerLabel} setStatus(8)`);
       } catch (_) {
         // Best-effort cleanup.
       }
@@ -2301,11 +2354,11 @@
 
     async function requestAdditionalPhoneSms(state = {}, activation) {
       const config = resolvePhoneConfig(state);
-      if (config.provider !== PHONE_SMS_PROVIDER_HERO) {
+      if (!isHeroProtocolProvider(config.provider)) {
         return;
       }
       try {
-        await setPhoneActivationStatus(state, activation, 3, 'HeroSMS setStatus(3)');
+        await setPhoneActivationStatus(state, activation, 3, `${getHeroProtocolProviderLabel(config.provider)} setStatus(3)`);
       } catch (_) {
         // Best-effort request only.
       }
@@ -2437,7 +2490,7 @@
         const payload = await fetchHeroSmsPayload(config, {
           action: statusAction,
           id: normalizedActivation.activationId,
-        }, `HeroSMS ${statusAction}`);
+        }, `${getHeroProtocolProviderLabel(config.provider)} ${statusAction}`);
         const text = describeHeroSmsPayload(payload);
         lastResponse = text;
         pollCount += 1;
@@ -2483,10 +2536,10 @@
         }
 
         if (/^STATUS_CANCEL$/i.test(text)) {
-          throw new Error('HeroSMS activation was cancelled before the SMS arrived.');
+          throw new Error(`${getHeroProtocolProviderLabel(config.provider)} activation was cancelled before the SMS arrived.`);
         }
 
-        throw new Error(`HeroSMS ${statusAction} failed: ${text || 'empty response'}`);
+        throw new Error(`${getHeroProtocolProviderLabel(config.provider)} ${statusAction} failed: ${text || 'empty response'}`);
       }
 
       throw buildPhoneCodeTimeoutError(lastResponse);
@@ -2862,7 +2915,11 @@
 
       const providerLabel = normalizedActivation.provider === PHONE_SMS_PROVIDER_5SIM
         ? '5sim'
-        : (normalizedActivation.provider === PHONE_SMS_PROVIDER_NEXSMS ? 'NexSMS' : 'HeroSMS');
+        : (
+          normalizedActivation.provider === PHONE_SMS_PROVIDER_NEXSMS
+            ? 'NexSMS'
+            : getHeroProtocolProviderLabel(normalizedActivation.provider)
+        );
       let lastLoggedStatus = '';
       let lastLoggedPollCount = 0;
 
@@ -3491,7 +3548,11 @@
       }
       const providerLabel = normalizedActivation.provider === PHONE_SMS_PROVIDER_5SIM
         ? '5sim'
-        : (normalizedActivation.provider === PHONE_SMS_PROVIDER_NEXSMS ? 'NexSMS' : 'HeroSMS');
+        : (
+          normalizedActivation.provider === PHONE_SMS_PROVIDER_NEXSMS
+            ? 'NexSMS'
+            : getHeroProtocolProviderLabel(normalizedActivation.provider)
+        );
       const usePageResend = normalizedActivation.provider !== PHONE_SMS_PROVIDER_5SIM;
 
       const waitSeconds = normalizePhoneCodeWaitSeconds(state?.phoneCodeWaitSeconds);

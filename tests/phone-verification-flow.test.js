@@ -1374,6 +1374,64 @@ test('phone verification helper requests HeroSMS numbers with fixed OpenAI and T
   assert.equal(requests[1].searchParams.get('api_key'), 'demo-key');
 });
 
+test('phone verification helper requests SMSBower numbers through handler API protocol', async () => {
+  const requests = [];
+  const helpers = api.createPhoneVerificationHelpers({
+    addLog: async () => {},
+    ensureStep8SignupPageReady: async () => {},
+    fetchImpl: async (url) => {
+      const parsedUrl = new URL(url);
+      requests.push(parsedUrl);
+      const action = parsedUrl.searchParams.get('action');
+      if (action === 'getPrices') {
+        return {
+          ok: true,
+          text: async () => buildHeroSmsPricesPayload({ cost: 0.11 }),
+        };
+      }
+      if (action === 'getNumber') {
+        return {
+          ok: true,
+          text: async () => 'ACCESS_NUMBER:789012:66950000001',
+        };
+      }
+      throw new Error(`Unexpected SMSBower action: ${action}`);
+    },
+    getState: async () => ({ phoneSmsProvider: 'smsbower', smsbowerApiKey: 'sms-key' }),
+    sendToContentScriptResilient: async () => ({}),
+    setState: async () => {},
+    sleepWithStop: async () => {},
+    throwIfStopped: () => {},
+  });
+
+  const activation = await helpers.requestPhoneActivation({
+    phoneSmsProvider: 'smsbower',
+    smsbowerApiKey: 'sms-key',
+  });
+
+  assert.deepStrictEqual(activation, {
+    activationId: '789012',
+    phoneNumber: '66950000001',
+    provider: 'smsbower',
+    serviceCode: 'dr',
+    countryId: 52,
+    countryLabel: 'Thailand',
+    successfulUses: 0,
+    maxUses: 1,
+  });
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0].origin, 'https://smsbower.page');
+  assert.equal(requests[0].searchParams.get('action'), 'getPrices');
+  assert.equal(requests[0].searchParams.get('api_key'), 'sms-key');
+  assert.equal(requests[1].origin, 'https://smsbower.page');
+  assert.equal(requests[1].searchParams.get('action'), 'getNumber');
+  assert.equal(requests[1].searchParams.get('maxPrice'), '0.11');
+  assert.equal(requests[1].searchParams.get('fixedPrice'), 'true');
+  assert.equal(requests[1].searchParams.get('service'), 'dr');
+  assert.equal(requests[1].searchParams.get('country'), '52');
+  assert.equal(requests[1].searchParams.get('api_key'), 'sms-key');
+});
+
 test('phone verification helper retries HeroSMS serviceCountRent until it receives a usable lowest price', async () => {
   const requests = [];
   let serviceCountRentAttempt = 0;

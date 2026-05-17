@@ -494,6 +494,7 @@
                 <option value="hero-sms">HeroSMS</option>
                 <option value="5sim">5sim</option>
                 <option value="nexsms">NexSMS</option>
+                <option value="smsbower">SMSBower</option>
               </select>
             </div>
             <div class="data-row" id="row-phone-sms-provider-order" style="display:none;">
@@ -503,11 +504,12 @@
                   <option value="hero-sms" selected>HeroSMS</option>
                   <option value="5sim" selected>5sim</option>
                   <option value="nexsms" selected>NexSMS</option>
+                  <option value="smsbower" selected>SMSBower</option>
                 </select>
                 <div class="hero-sms-country-mainline">
                   <div id="phone-sms-provider-order-menu-shell" class="hero-sms-country-menu">
                     <button id="btn-phone-sms-provider-order-menu" class="btn btn-outline btn-sm hero-sms-country-menu-btn" type="button" aria-haspopup="listbox" aria-expanded="false">
-                      HeroSMS / 5sim / NexSMS (3/3)
+                      HeroSMS / 5sim / NexSMS / SMSBower (4/4)
                     </button>
                     <div id="phone-sms-provider-order-menu" class="hero-sms-country-menu-dropdown" role="listbox" aria-multiselectable="true" hidden></div>
                   </div>
@@ -568,11 +570,24 @@
                   data-hide-label="隐藏 HeroSMS API Key" aria-label="显示 HeroSMS API Key" title="显示 HeroSMS API Key"></button>
               </div>
             </div>
+            <div class="data-row" id="row-smsbower-api-key" style="display:none;">
+              <span class="data-label">SMSBower API</span>
+              <div class="input-with-icon">
+                <input type="password" id="input-smsbower-api-key" class="data-input data-input-with-icon mono"
+                  placeholder="请输入 SMSBower API Key" />
+                <button id="btn-toggle-smsbower-api-key" class="input-icon-btn" type="button"
+                  data-password-toggle="input-smsbower-api-key" data-show-label="显示 SMSBower API Key"
+                  data-hide-label="隐藏 SMSBower API Key" aria-label="显示 SMSBower API Key" title="显示 SMSBower API Key"></button>
+              </div>
+            </div>
             <div class="data-row" id="row-five-sim-api-key" style="display:none;">
               <span class="data-label">5sim API</span>
               <div class="input-with-icon">
                 <input type="password" id="input-five-sim-api-key" class="data-input data-input-with-icon mono"
                   placeholder="请输入 5sim API Key（Bearer Token）" />
+                <button id="btn-toggle-five-sim-api-key" class="input-icon-btn" type="button"
+                  data-password-toggle="input-five-sim-api-key" data-show-label="显示 5sim API Key"
+                  data-hide-label="隐藏 5sim API Key" aria-label="显示 5sim API Key" title="显示 5sim API Key"></button>
               </div>
             </div>
             <div class="data-row" id="row-five-sim-country" style="display:none;">
@@ -605,6 +620,9 @@
               <div class="input-with-icon">
                 <input type="password" id="input-nex-sms-api-key" class="data-input data-input-with-icon mono"
                   placeholder="请输入 NexSMS API Key" />
+                <button id="btn-toggle-nex-sms-api-key" class="input-icon-btn" type="button"
+                  data-password-toggle="input-nex-sms-api-key" data-show-label="显示 NexSMS API Key"
+                  data-hide-label="隐藏 NexSMS API Key" aria-label="显示 NexSMS API Key" title="显示 NexSMS API Key"></button>
               </div>
             </div>
             <div class="data-row" id="row-nex-sms-country" style="display:none;">

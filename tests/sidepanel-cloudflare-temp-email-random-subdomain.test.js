@@ -178,6 +178,41 @@ return {
   assert.deepEqual(api.calls.domainEditMode, [{ editing: false, options: { clearInput: true } }]);
 });
 
+test('applyCloudflareTempEmailSettingsState preserves custom subdomain prefix while the input is focused', () => {
+  const bundle = extractFunction('applyCloudflareTempEmailSettingsState');
+
+  const api = new Function(`
+const inputTempEmailBaseUrl = { value: '' };
+const inputTempEmailAdminAuth = { value: '' };
+const inputTempEmailCustomAuth = { value: '' };
+const inputTempEmailReceiveMailbox = { value: '' };
+const inputTempEmailUseRandomSubdomain = { checked: false };
+const inputTempEmailCustomSubdomainPrefix = { value: 'draft' };
+const document = { activeElement: inputTempEmailCustomSubdomainPrefix };
+const calls = {
+  domainOptions: [],
+  domainEditMode: [],
+};
+function renderCloudflareTempEmailDomainOptions(value) { calls.domainOptions.push(value); }
+function setCloudflareTempEmailDomainEditMode(editing, options) { calls.domainEditMode.push({ editing, options }); }
+${bundle}
+return {
+  applyCloudflareTempEmailSettingsState,
+  inputTempEmailCustomSubdomainPrefix,
+  calls,
+};
+  `)();
+
+  api.applyCloudflareTempEmailSettingsState({
+    cloudflareTempEmailCustomSubdomainPrefix: 'server-value',
+    cloudflareTempEmailDomain: 'mail.example.com',
+  });
+
+  assert.equal(api.inputTempEmailCustomSubdomainPrefix.value, 'draft');
+  assert.deepEqual(api.calls.domainOptions, ['mail.example.com']);
+  assert.deepEqual(api.calls.domainEditMode, [{ editing: false, options: { clearInput: true } }]);
+});
+
 test('cloudflare temp email custom subdomain prefix input marks settings dirty and saves normalized value on blur', async () => {
   const normalizeBundle = extractFunction('normalizeCloudflareTempEmailCustomSubdomainPrefixValue');
 
@@ -201,7 +236,6 @@ function saveSettings(options) {
 ${normalizeBundle}
 inputTempEmailCustomSubdomainPrefix?.addEventListener('input', () => {
   markSettingsDirty(true);
-  scheduleSettingsAutoSave();
 });
 inputTempEmailCustomSubdomainPrefix?.addEventListener('blur', () => {
   inputTempEmailCustomSubdomainPrefix.value = normalizeCloudflareTempEmailCustomSubdomainPrefixValue(
@@ -220,7 +254,7 @@ return {
   api.inputTempEmailCustomSubdomainPrefix.value = ' .Edu. ';
   api.inputTempEmailCustomSubdomainPrefix.listeners.input();
   assert.deepEqual(api.getDirtyCalls(), [true]);
-  assert.equal(api.getScheduledAutoSaveCalls(), 1);
+  assert.equal(api.getScheduledAutoSaveCalls(), 0);
 
   api.inputTempEmailCustomSubdomainPrefix.listeners.blur();
   await Promise.resolve();

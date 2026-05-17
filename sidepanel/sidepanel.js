@@ -330,6 +330,7 @@ const rowHeroSmsCountry = document.getElementById('row-hero-sms-country');
 const rowHeroSmsCountryFallback = document.getElementById('row-hero-sms-country-fallback');
 const rowHeroSmsAcquirePriority = document.getElementById('row-hero-sms-acquire-priority');
 const rowHeroSmsApiKey = document.getElementById('row-hero-sms-api-key');
+const rowSmsbowerApiKey = document.getElementById('row-smsbower-api-key');
 const rowHeroSmsMaxPrice = document.getElementById('row-hero-sms-max-price');
 const rowFiveSimApiKey = document.getElementById('row-five-sim-api-key');
 const rowFiveSimCountry = document.getElementById('row-five-sim-country');
@@ -353,6 +354,7 @@ const rowPhoneCodePollIntervalSeconds = document.getElementById('row-phone-code-
 const rowPhoneCodePollMaxRounds = document.getElementById('row-phone-code-poll-max-rounds');
 const inputHeroSmsApiKey = document.getElementById('input-hero-sms-api-key');
 const btnToggleHeroSmsApiKey = document.getElementById('btn-toggle-hero-sms-api-key');
+const inputSmsbowerApiKey = document.getElementById('input-smsbower-api-key');
 const inputHeroSmsMinPrice = document.getElementById('input-hero-sms-min-price');
 const inputHeroSmsMaxPrice = document.getElementById('input-hero-sms-max-price');
 const inputFiveSimApiKey = document.getElementById('input-five-sim-api-key');
@@ -589,11 +591,13 @@ const DEFAULT_HERO_SMS_COUNTRY_LABEL = 'Thailand';
 const PHONE_SMS_PROVIDER_HERO = 'hero-sms';
 const PHONE_SMS_PROVIDER_FIVE_SIM = '5sim';
 const PHONE_SMS_PROVIDER_NEXSMS = 'nexsms';
+const PHONE_SMS_PROVIDER_SMSBOWER = 'smsbower';
 const DEFAULT_PHONE_SMS_PROVIDER = PHONE_SMS_PROVIDER_HERO;
 const DEFAULT_PHONE_SMS_PROVIDER_ORDER = Object.freeze([
   PHONE_SMS_PROVIDER_HERO,
   PHONE_SMS_PROVIDER_FIVE_SIM,
   PHONE_SMS_PROVIDER_NEXSMS,
+  PHONE_SMS_PROVIDER_SMSBOWER,
 ]);
 const DEFAULT_FIVE_SIM_COUNTRY_ORDER = Object.freeze(['thailand']);
 const DEFAULT_FIVE_SIM_OPERATOR = 'any';
@@ -2310,7 +2314,11 @@ function applyCloudflareTempEmailSettingsState(state = {}) {
     inputTempEmailUseRandomSubdomain.checked = Boolean(state?.cloudflareTempEmailUseRandomSubdomain);
   }
   if (inputTempEmailCustomSubdomainPrefix) {
-    inputTempEmailCustomSubdomainPrefix.value = state?.cloudflareTempEmailCustomSubdomainPrefix || '';
+    const isEditingCustomSubdomainPrefix = typeof document !== 'undefined'
+      && document.activeElement === inputTempEmailCustomSubdomainPrefix;
+    if (!isEditingCustomSubdomainPrefix) {
+      inputTempEmailCustomSubdomainPrefix.value = state?.cloudflareTempEmailCustomSubdomainPrefix || '';
+    }
   }
   renderCloudflareTempEmailDomainOptions(state?.cloudflareTempEmailDomain || '');
   setCloudflareTempEmailDomainEditMode(false, { clearInput: true });
@@ -2538,6 +2546,9 @@ function collectSettingsPayload() {
   const heroSmsApiKeyValue = typeof inputHeroSmsApiKey !== 'undefined' && inputHeroSmsApiKey
     ? (inputHeroSmsApiKey.value || '')
     : '';
+  const smsbowerApiKeyValue = typeof inputSmsbowerApiKey !== 'undefined' && inputSmsbowerApiKey
+    ? (inputSmsbowerApiKey.value || '')
+    : '';
   const defaultHeroSmsReuseEnabled = typeof DEFAULT_HERO_SMS_REUSE_ENABLED !== 'undefined'
     ? DEFAULT_HERO_SMS_REUSE_ENABLED
     : true;
@@ -2618,6 +2629,7 @@ function collectSettingsPayload() {
       const normalized = String(value || '').trim().toLowerCase();
       if (normalized === '5sim') return '5sim';
       if (normalized === 'nexsms') return 'nexsms';
+      if (normalized === 'smsbower' || normalized === 'sms-bower') return 'smsbower';
       return 'hero-sms';
     });
   const normalizePhoneSmsProviderOrderSafe = typeof normalizePhoneSmsProviderOrderValue === 'function'
@@ -2625,10 +2637,10 @@ function collectSettingsPayload() {
     : ((value = [], fallbackOrder = []) => {
       const source = Array.isArray(value) ? value : [];
       if (source.length) {
-        return source.map((entry) => normalizePhoneSmsProviderSafe(entry)).slice(0, 3);
+        return source.map((entry) => normalizePhoneSmsProviderSafe(entry)).slice(0, 4);
       }
       return Array.isArray(fallbackOrder)
-        ? fallbackOrder.map((entry) => normalizePhoneSmsProviderSafe(entry)).slice(0, 3)
+        ? fallbackOrder.map((entry) => normalizePhoneSmsProviderSafe(entry)).slice(0, 4)
         : [];
     });
   const normalizeFiveSimCountryOrderSafe = typeof normalizeFiveSimCountryOrderValue === 'function'
@@ -2801,6 +2813,7 @@ function collectSettingsPayload() {
       (typeof inputFiveSimProduct !== 'undefined' ? inputFiveSimProduct?.value : '') || ''
     ),
     nexSmsApiKey: (typeof inputNexSmsApiKey !== 'undefined' ? inputNexSmsApiKey?.value : '') || '',
+    smsbowerApiKey: smsbowerApiKeyValue,
     nexSmsCountryOrder,
     nexSmsServiceCode: normalizeNexSmsServiceCodeSafe(
       (typeof inputNexSmsServiceCode !== 'undefined' ? inputNexSmsServiceCode?.value : '') || ''
@@ -2873,6 +2886,9 @@ function normalizePhoneSmsProviderValue(value = '') {
   if (normalized === PHONE_SMS_PROVIDER_NEXSMS) {
     return PHONE_SMS_PROVIDER_NEXSMS;
   }
+  if (normalized === PHONE_SMS_PROVIDER_SMSBOWER || normalized === 'sms-bower') {
+    return PHONE_SMS_PROVIDER_SMSBOWER;
+  }
   return PHONE_SMS_PROVIDER_HERO;
 }
 
@@ -2917,6 +2933,8 @@ function getPhoneSmsProviderLabel(provider = '') {
       return '5sim';
     case PHONE_SMS_PROVIDER_NEXSMS:
       return 'NexSMS';
+    case PHONE_SMS_PROVIDER_SMSBOWER:
+      return 'SMSBower';
     default:
       return 'HeroSMS';
   }
@@ -2939,8 +2957,8 @@ function updatePhoneSmsProviderOrderSummary(order = []) {
   }
   if (btnPhoneSmsProviderOrderMenu) {
     btnPhoneSmsProviderOrderMenu.textContent = normalized.length
-      ? `${normalized.map((provider) => getPhoneSmsProviderLabel(provider)).join(' / ')} (${normalized.length}/3)`
-      : '未选择 (0/3)';
+      ? `${normalized.map((provider) => getPhoneSmsProviderLabel(provider)).join(' / ')} (${normalized.length}/${DEFAULT_PHONE_SMS_PROVIDER_ORDER.length})`
+      : `未选择 (0/${DEFAULT_PHONE_SMS_PROVIDER_ORDER.length})`;
   }
 }
 
@@ -4184,7 +4202,30 @@ async function previewHeroSmsPriceTiers() {
   const candidates = selectedCountries.length
     ? selectedCountries
     : [getSelectedHeroSmsCountryOption()];
-  const apiKey = String(inputHeroSmsApiKey?.value || '').trim();
+  const provider = typeof getSelectedPhoneSmsProvider === 'function'
+    ? getSelectedPhoneSmsProvider()
+    : (
+      typeof normalizePhoneSmsProviderValue === 'function'
+        ? normalizePhoneSmsProviderValue(
+          (typeof selectPhoneSmsProvider !== 'undefined' ? selectPhoneSmsProvider?.value : '')
+          || (typeof DEFAULT_PHONE_SMS_PROVIDER !== 'undefined' ? DEFAULT_PHONE_SMS_PROVIDER : 'hero-sms')
+        )
+        : String(
+          (typeof selectPhoneSmsProvider !== 'undefined' ? selectPhoneSmsProvider?.value : '')
+          || (typeof DEFAULT_PHONE_SMS_PROVIDER !== 'undefined' ? DEFAULT_PHONE_SMS_PROVIDER : 'hero-sms')
+          || 'hero-sms'
+        ).trim().toLowerCase()
+    );
+  const smsbowerProviderValue = typeof PHONE_SMS_PROVIDER_SMSBOWER !== 'undefined'
+    ? PHONE_SMS_PROVIDER_SMSBOWER
+    : 'smsbower';
+  const apiKey = String(
+    (
+      provider === smsbowerProviderValue
+        ? inputSmsbowerApiKey?.value
+        : inputHeroSmsApiKey?.value
+    ) || ''
+  ).trim();
 
   displayHeroSmsPriceTiers.textContent = '查询中...';
   if (rowHeroSmsPriceTiers) {
@@ -4206,8 +4247,11 @@ async function previewHeroSmsPriceTiers() {
       `Country #${countryId}`
     );
     try {
-      const url = new URL('https://hero-sms.com/stubs/handler_api.php');
-      url.searchParams.set('action', 'serviceCountRent');
+      const isSmsbowerProvider = provider === smsbowerProviderValue;
+      const url = new URL(isSmsbowerProvider
+        ? 'https://smsbower.page/stubs/handler_api.php'
+        : 'https://hero-sms.com/stubs/handler_api.php');
+      url.searchParams.set('action', isSmsbowerProvider ? 'getPrices' : 'serviceCountRent');
       url.searchParams.set('service', 'dr');
       url.searchParams.set('country', String(countryId));
       if (apiKey) {
@@ -4411,6 +4455,9 @@ function updatePhoneVerificationSettingsUI() {
       if (normalized === 'nexsms') {
         return 'nexsms';
       }
+      if (normalized === 'smsbower' || normalized === 'sms-bower') {
+        return 'smsbower';
+      }
       return 'hero-sms';
     });
   const heroProviderValue = typeof PHONE_SMS_PROVIDER_HERO !== 'undefined'
@@ -4422,6 +4469,9 @@ function updatePhoneVerificationSettingsUI() {
   const nexSmsProviderValue = typeof PHONE_SMS_PROVIDER_NEXSMS !== 'undefined'
     ? PHONE_SMS_PROVIDER_NEXSMS
     : 'nexsms';
+  const smsbowerProviderValue = typeof PHONE_SMS_PROVIDER_SMSBOWER !== 'undefined'
+    ? PHONE_SMS_PROVIDER_SMSBOWER
+    : 'smsbower';
   const defaultProviderValue = typeof DEFAULT_PHONE_SMS_PROVIDER !== 'undefined'
     ? DEFAULT_PHONE_SMS_PROVIDER
     : heroProviderValue;
@@ -4435,6 +4485,8 @@ function updatePhoneVerificationSettingsUI() {
   const heroProvider = provider === heroProviderValue;
   const fiveSimProvider = provider === fiveSimProviderValue;
   const nexSmsProvider = provider === nexSmsProviderValue;
+  const smsbowerProvider = provider === smsbowerProviderValue;
+  const heroProtocolProvider = heroProvider || smsbowerProvider;
   if (rowPhoneVerificationEnabled) {
     rowPhoneVerificationEnabled.style.display = '';
   }
@@ -4491,10 +4543,25 @@ function updatePhoneVerificationSettingsUI() {
   [
     typeof rowHeroSmsCountry !== 'undefined' ? rowHeroSmsCountry : null,
     typeof rowHeroSmsCountryFallback !== 'undefined' ? rowHeroSmsCountryFallback : null,
+  ].forEach((row) => {
+    if (row) {
+      row.style.display = showSettings && heroProtocolProvider ? '' : 'none';
+    }
+  });
+
+  [
     typeof rowHeroSmsApiKey !== 'undefined' ? rowHeroSmsApiKey : null,
   ].forEach((row) => {
     if (row) {
       row.style.display = showSettings && heroProvider ? '' : 'none';
+    }
+  });
+
+  [
+    typeof rowSmsbowerApiKey !== 'undefined' ? rowSmsbowerApiKey : null,
+  ].forEach((row) => {
+    if (row) {
+      row.style.display = showSettings && smsbowerProvider ? '' : 'none';
     }
   });
 
@@ -4528,10 +4595,10 @@ function updatePhoneVerificationSettingsUI() {
         : ((value = [], fallbackOrder = []) => {
           const source = Array.isArray(value) ? value : [];
           if (source.length) {
-            return source.map((entry) => normalizeProviderSafe(entry)).slice(0, 3);
+            return source.map((entry) => normalizeProviderSafe(entry)).slice(0, 4);
           }
           return Array.isArray(fallbackOrder)
-            ? fallbackOrder.map((entry) => normalizeProviderSafe(entry)).slice(0, 3)
+            ? fallbackOrder.map((entry) => normalizeProviderSafe(entry)).slice(0, 4)
             : [];
         }))(
         typeof phoneSmsProviderOrderSelection !== 'undefined'
@@ -5262,6 +5329,9 @@ function applySettingsState(state) {
   }
   if (inputHeroSmsApiKey) {
     inputHeroSmsApiKey.value = state?.heroSmsApiKey || '';
+  }
+  if (inputSmsbowerApiKey) {
+    inputSmsbowerApiKey.value = state?.smsbowerApiKey || '';
   }
   if (inputFiveSimApiKey) {
     inputFiveSimApiKey.value = state?.fiveSimApiKey || '';
@@ -9187,7 +9257,6 @@ inputTempEmailUseRandomSubdomain?.addEventListener('change', () => {
 
 inputTempEmailCustomSubdomainPrefix?.addEventListener('input', () => {
   markSettingsDirty(true);
-  scheduleSettingsAutoSave();
 });
 inputTempEmailCustomSubdomainPrefix?.addEventListener('blur', () => {
   inputTempEmailCustomSubdomainPrefix.value = normalizeCloudflareTempEmailCustomSubdomainPrefixValue(
@@ -9358,6 +9427,14 @@ inputHeroSmsApiKey?.addEventListener('input', () => {
   scheduleSettingsAutoSave();
 });
 inputHeroSmsApiKey?.addEventListener('blur', () => {
+  saveSettings({ silent: true }).catch(() => { });
+});
+
+inputSmsbowerApiKey?.addEventListener('input', () => {
+  markSettingsDirty(true);
+  scheduleSettingsAutoSave();
+});
+inputSmsbowerApiKey?.addEventListener('blur', () => {
   saveSettings({ silent: true }).catch(() => { });
 });
 
@@ -10095,6 +10172,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       }
       if (message.payload.heroSmsApiKey !== undefined && inputHeroSmsApiKey) {
         inputHeroSmsApiKey.value = message.payload.heroSmsApiKey || '';
+      }
+      if (message.payload.smsbowerApiKey !== undefined && inputSmsbowerApiKey) {
+        inputSmsbowerApiKey.value = message.payload.smsbowerApiKey || '';
       }
       if (message.payload.heroSmsReuseEnabled !== undefined && inputHeroSmsReuseEnabled) {
         inputHeroSmsReuseEnabled.checked = normalizeHeroSmsReuseEnabledValue(message.payload.heroSmsReuseEnabled);

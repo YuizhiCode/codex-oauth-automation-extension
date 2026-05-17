@@ -427,6 +427,8 @@
               cloudflareTempEmailDomains: prevState.cloudflareTempEmailDomains,
               reusablePhoneActivation: prevState.reusablePhoneActivation,
               heroSmsApiKey: prevState.heroSmsApiKey,
+              smsbowerApiKey: prevState.smsbowerApiKey,
+              smsbowerBaseUrl: prevState.smsbowerBaseUrl,
               fiveSimApiKey: prevState.fiveSimApiKey,
               fiveSimBaseUrl: prevState.fiveSimBaseUrl,
               fiveSimCountryOrder: prevState.fiveSimCountryOrder,

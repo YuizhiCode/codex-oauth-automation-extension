@@ -50,6 +50,7 @@ function extractFunction(name) {
 
 test('cloudflare temp email settings normalize and expose the random-subdomain toggle', () => {
   const bundle = [
+    extractFunction('normalizeCloudflareTempEmailCustomSubdomainPrefix'),
     extractFunction('normalizeCloudflareTempEmailReceiveMailbox'),
     extractFunction('getCloudflareTempEmailConfig'),
     extractFunction('normalizePersistentSettingValue'),

@@ -296,14 +296,17 @@ const DEFAULT_ACCOUNT_RUN_HISTORY_HELPER_BASE_URL = DEFAULT_HOTMAIL_LOCAL_BASE_U
 const HOTMAIL_LOCAL_HELPER_TIMEOUT_MS = 45000;
 const DEFAULT_LUCKMAIL_PROJECT_CODE = 'openai';
 const DEFAULT_HERO_SMS_BASE_URL = 'https://hero-sms.com/stubs/handler_api.php';
+const DEFAULT_SMSBOWER_BASE_URL = 'https://smsbower.page/stubs/handler_api.php';
 const PHONE_SMS_PROVIDER_HERO = 'hero-sms';
 const PHONE_SMS_PROVIDER_5SIM = '5sim';
 const PHONE_SMS_PROVIDER_NEXSMS = 'nexsms';
+const PHONE_SMS_PROVIDER_SMSBOWER = 'smsbower';
 const DEFAULT_PHONE_SMS_PROVIDER = PHONE_SMS_PROVIDER_HERO;
 const DEFAULT_PHONE_SMS_PROVIDER_ORDER = Object.freeze([
   PHONE_SMS_PROVIDER_HERO,
   PHONE_SMS_PROVIDER_5SIM,
   PHONE_SMS_PROVIDER_NEXSMS,
+  PHONE_SMS_PROVIDER_SMSBOWER,
 ]);
 const DEFAULT_FIVE_SIM_BASE_URL = 'https://5sim.net/v1';
 const DEFAULT_FIVE_SIM_PRODUCT = 'openai';
@@ -552,6 +555,8 @@ const PERSISTED_SETTING_DEFAULTS = {
   mail2925Accounts: [],
   paypalAccounts: [],
   heroSmsApiKey: '',
+  smsbowerApiKey: '',
+  smsbowerBaseUrl: DEFAULT_SMSBOWER_BASE_URL,
   fiveSimApiKey: '',
   fiveSimBaseUrl: DEFAULT_FIVE_SIM_BASE_URL,
   fiveSimCountryOrder: [],
@@ -847,6 +852,22 @@ function normalizeHeroSmsMaxPrice(value = '') {
     return '';
   }
   return String(Math.round(numeric * 10000) / 10000);
+}
+
+function normalizePhoneSmsApiBaseUrl(value = '', fallback = DEFAULT_HERO_SMS_BASE_URL) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) {
+    return fallback;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      return fallback;
+    }
+    return parsed.toString();
+  } catch {
+    return fallback;
+  }
 }
 
 function normalizeHeroSmsAcquirePriority(value = '') {
@@ -1278,6 +1299,14 @@ function normalizeCloudflareDomain(rawValue = '') {
   return value;
 }
 
+function normalizeCloudflareTempEmailCustomSubdomainPrefix(value = '') {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^\.+|\.+$/g, '')
+    .replace(/[^a-z0-9-]/g, '');
+}
+
 function normalizeCloudflareDomains(values) {
   const normalizedDomains = [];
   const seen = new Set();
@@ -1368,7 +1397,9 @@ function getCloudflareTempEmailConfig(state = {}) {
     customAuth: String(state.cloudflareTempEmailCustomAuth || ''),
     receiveMailbox: normalizeCloudflareTempEmailReceiveMailbox(state.cloudflareTempEmailReceiveMailbox),
     useRandomSubdomain: Boolean(state.cloudflareTempEmailUseRandomSubdomain),
-    customSubdomainPrefix: normalizeCloudflareTempEmailDomain(String(state.cloudflareTempEmailCustomSubdomainPrefix || '').trim()),
+    customSubdomainPrefix: normalizeCloudflareTempEmailCustomSubdomainPrefix(
+      String(state.cloudflareTempEmailCustomSubdomainPrefix || '').trim()
+    ),
     domain: normalizeCloudflareTempEmailDomain(state.cloudflareTempEmailDomain),
     domains: normalizeCloudflareTempEmailDomains(state.cloudflareTempEmailDomains),
   };
@@ -1406,6 +1437,9 @@ function normalizePhoneSmsProvider(value = '') {
   if (normalized === PHONE_SMS_PROVIDER_NEXSMS) {
     return PHONE_SMS_PROVIDER_NEXSMS;
   }
+  if (normalized === PHONE_SMS_PROVIDER_SMSBOWER || normalized === 'sms-bower') {
+    return PHONE_SMS_PROVIDER_SMSBOWER;
+  }
   return PHONE_SMS_PROVIDER_HERO;
 }
 
@@ -1429,7 +1463,7 @@ function normalizePhoneSmsProviderOrder(value = [], fallbackOrder = []) {
   });
 
   if (normalized.length) {
-    return normalized.slice(0, 3);
+    return normalized.slice(0, DEFAULT_PHONE_SMS_PROVIDER_ORDER.length);
   }
 
   const fallback = Array.isArray(fallbackOrder) ? fallbackOrder : [];
@@ -1442,7 +1476,7 @@ function normalizePhoneSmsProviderOrder(value = [], fallbackOrder = []) {
     fallbackNormalized.push(provider);
   });
 
-  return fallbackNormalized.slice(0, 3);
+  return fallbackNormalized.slice(0, DEFAULT_PHONE_SMS_PROVIDER_ORDER.length);
 }
 
 function normalizeSignupMethod(value = '') {
@@ -1781,7 +1815,7 @@ function normalizePersistentSettingValue(key, value) {
     case 'cloudflareTempEmailUseRandomSubdomain':
       return Boolean(value);
     case 'cloudflareTempEmailCustomSubdomainPrefix':
-      return normalizeCloudflareTempEmailDomain(String(value || '').trim());
+      return normalizeCloudflareTempEmailCustomSubdomainPrefix(String(value || '').trim());
     case 'icloudHostPreference':
       return normalizeIcloudHost(value) || 'auto';
     case 'icloudTargetMailboxType':
@@ -1838,6 +1872,10 @@ function normalizePersistentSettingValue(key, value) {
       return normalizePayPalAccounts(value);
     case 'heroSmsApiKey':
       return String(value || '');
+    case 'smsbowerApiKey':
+      return String(value || '');
+    case 'smsbowerBaseUrl':
+      return normalizePhoneSmsApiBaseUrl(value, DEFAULT_SMSBOWER_BASE_URL);
     case 'fiveSimApiKey':
       return String(value || '').trim();
     case 'fiveSimBaseUrl':
