@@ -64,6 +64,12 @@
     const DEFAULT_PHONE_ACTIVATION_RETRY_DELAY_MS = 2000;
     const HERO_SMS_ACQUIRE_PRIORITY_COUNTRY = 'country';
     const HERO_SMS_ACQUIRE_PRIORITY_PRICE = 'price';
+    const DEFAULT_SIGNUP_PHONE_SCAN_POLL_SECONDS = 5;
+    const DEFAULT_SIGNUP_PHONE_SCAN_TARGET_COUNT = 10;
+    const SIGNUP_PHONE_SCAN_POLL_SECONDS_MIN = 1;
+    const SIGNUP_PHONE_SCAN_POLL_SECONDS_MAX = 300;
+    const SIGNUP_PHONE_SCAN_TARGET_COUNT_MIN = 1;
+    const SIGNUP_PHONE_SCAN_TARGET_COUNT_MAX = 100;
     const PHONE_SMS_PROVIDER_HERO = 'hero-sms';
     const PHONE_SMS_PROVIDER_5SIM = '5sim';
     const PHONE_SMS_PROVIDER_NEXSMS = 'nexsms';
@@ -296,6 +302,22 @@
       return Math.max(500, Math.min(30000, parsed));
     }
 
+    function normalizeSignupPhoneScanPollSeconds(value) {
+      const parsed = Math.floor(Number(value));
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        return DEFAULT_SIGNUP_PHONE_SCAN_POLL_SECONDS;
+      }
+      return Math.max(SIGNUP_PHONE_SCAN_POLL_SECONDS_MIN, Math.min(SIGNUP_PHONE_SCAN_POLL_SECONDS_MAX, parsed));
+    }
+
+    function normalizeSignupPhoneScanTargetCount(value) {
+      const parsed = Math.floor(Number(value));
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        return DEFAULT_SIGNUP_PHONE_SCAN_TARGET_COUNT;
+      }
+      return Math.max(SIGNUP_PHONE_SCAN_TARGET_COUNT_MIN, Math.min(SIGNUP_PHONE_SCAN_TARGET_COUNT_MAX, parsed));
+    }
+
     function normalizeHeroSmsPriceLimit(value) {
       if (value === undefined || value === null || String(value).trim() === '') {
         return null;
@@ -493,6 +515,21 @@
         ),
         ...(statusAction ? { statusAction } : {}),
       };
+    }
+
+    function normalizeActivationPool(value = []) {
+      const source = Array.isArray(value) ? value : [];
+      const seen = new Set();
+      const normalized = [];
+      source.forEach((entry) => {
+        const activation = normalizeActivation(entry);
+        if (!activation || seen.has(activation.activationId)) {
+          return;
+        }
+        seen.add(activation.activationId);
+        normalized.push(activation);
+      });
+      return normalized;
     }
 
     function normalizeActivationFallback(record) {
@@ -1561,7 +1598,9 @@
       const providerLabel = getHeroProtocolProviderLabel(config.provider);
       const priceAction = getHeroProtocolPriceAction(config.provider);
       const userLimit = normalizeHeroSmsPriceLimit(state.heroSmsMaxPrice);
-      const userMinPrice = normalizeHeroSmsPriceLimit(state.heroSmsMinPrice);
+      const ignoreMinPrice = Boolean(state?.ignoreHeroSmsMinPriceForScan);
+      const appendUserLimitFallback = Boolean(state?.appendHeroSmsUserLimitFallbackForScan);
+      const userMinPrice = ignoreMinPrice ? null : normalizeHeroSmsPriceLimit(state.heroSmsMinPrice);
       let priceCandidates = [];
 
       for (let attempt = 1; attempt <= DEFAULT_PHONE_PRICE_LOOKUP_ATTEMPTS; attempt += 1) {
@@ -1593,6 +1632,13 @@
       }
       if (userLimit !== null) {
         const bounded = minBoundedCandidates.filter((price) => price <= userLimit);
+        if (
+          appendUserLimitFallback
+          && bounded.length > 0
+          && !bounded.some((price) => Number(price) === Number(userLimit))
+        ) {
+          bounded.push(userLimit);
+        }
         if (bounded.length > 0) {
           const boundedPlan = { prices: bounded, userLimit, userMinPrice, minCatalogPrice };
           await persistHeroSmsPricePlanSnapshot(countryConfig, boundedPlan);
@@ -2805,9 +2851,79 @@
       }
     }
 
+    async function fillSignupPhoneActivationPool(state = {}, options = {}) {
+      const targetCount = normalizeSignupPhoneScanTargetCount(state?.signupPhoneScanTargetCount);
+      const pollSeconds = normalizeSignupPhoneScanPollSeconds(state?.signupPhoneScanPollSeconds);
+      const configuredMaxPrice = normalizeHeroSmsPriceLimit(state?.heroSmsMaxPrice);
+      if (configuredMaxPrice === null) {
+        throw new Error('扫号模式需要先设置接码价格上限，避免无上限买号。');
+      }
+
+      const pool = normalizeActivationPool(state?.signupPhoneActivationPool);
+      const seen = new Set(pool.map((entry) => entry.activationId));
+      while (pool.length < targetCount) {
+        throwIfStopped();
+        try {
+          const scanState = {
+            ...state,
+            ignoreHeroSmsMinPriceForScan: true,
+            appendHeroSmsUserLimitFallbackForScan: true,
+          };
+          const activation = normalizeActivation(await requestPhoneActivation(scanState, options));
+          if (!activation) {
+            throw new Error('接码平台返回的手机号订单无效。');
+          }
+          if (!seen.has(activation.activationId)) {
+            seen.add(activation.activationId);
+            pool.push(activation);
+            await setPhoneRuntimeState({ signupPhoneActivationPool: pool });
+            await addLog(
+              `扫号模式：已买入手机号 ${activation.phoneNumber}（${pool.length}/${targetCount}，价格上限 ${configuredMaxPrice}）。`,
+              'info'
+            );
+          }
+        } catch (error) {
+          await addLog(
+            `扫号模式：当前没有买到价格上限内的手机号，${pollSeconds}s 后继续扫描。${error?.message || error}`,
+            'warn'
+          );
+          await sleepWithStop(pollSeconds * 1000);
+        }
+      }
+      return pool;
+    }
+
+    async function prepareSignupPhoneActivationFromScanPool(state = {}, options = {}) {
+      const targetCount = normalizeSignupPhoneScanTargetCount(state?.signupPhoneScanTargetCount);
+      await addLog(`步骤 2：扫号模式启动，准备买入 ${targetCount} 个价格上限内的手机号。`, 'info');
+      const pool = await fillSignupPhoneActivationPool(state, options);
+      const [activation, ...remainingPool] = pool;
+      await setPhoneRuntimeState({ signupPhoneActivationPool: remainingPool });
+      await addLog(
+        `步骤 2：扫号模式已从手机号池取出 ${activation.phoneNumber}，剩余 ${remainingPool.length} 个。`,
+        'warn'
+      );
+      return activation;
+    }
+
     async function prepareSignupPhoneActivation(state = {}, options = {}) {
       let activation = null;
       if (options?.preferActiveActivationPool) {
+        const localActivationPool = normalizeActivationPool(state?.signupPhoneActivationPool);
+        if (localActivationPool.length > 0) {
+          const [pooledActivation, ...remainingPool] = localActivationPool;
+          activation = pooledActivation;
+          await setPhoneRuntimeState({ signupPhoneActivationPool: remainingPool });
+          await addLog(
+            `步骤 2：扫号池已取出手机号 ${activation.phoneNumber}（activationId=${activation.activationId}），剩余 ${remainingPool.length} 个。`,
+            'warn'
+          );
+        }
+      }
+      if (!activation && options?.preferActiveActivationPool && state?.signupPhoneScanEnabled) {
+        activation = await prepareSignupPhoneActivationFromScanPool(state, options);
+      }
+      if (!activation && options?.preferActiveActivationPool) {
         const activeActivations = await listHeroSmsActiveActivations(state);
         if (activeActivations.length > 0) {
           activation = activeActivations[0];
@@ -4031,6 +4147,7 @@
       completePhoneVerificationFlow,
       finalizeSignupPhoneActivationAfterSuccess,
       finalizeLoginPhoneActivationAfterSuccess,
+      fillSignupPhoneActivationPool,
       normalizeActivation,
       pollPhoneActivationCode,
       prepareLoginPhoneActivation,

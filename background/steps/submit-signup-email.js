@@ -260,7 +260,8 @@
       }
 
       const signupPhonePoolEnabled = Boolean(state?.signupPhonePoolEnabled);
-      if (signupPhonePoolEnabled) {
+      const signupPhoneScanEnabled = Boolean(state?.signupPhoneScanEnabled);
+      if (signupPhonePoolEnabled || signupPhoneScanEnabled) {
         if (typeof phoneVerificationHelpers?.prepareSignupPhoneActivation !== 'function') {
           throw new Error('手机号注册流程不可用：接码模块尚未初始化。');
         }

@@ -483,10 +483,50 @@
                 <span class="setting-caption">优先使用 HeroSMS 活跃激活号码</span>
               </div>
             </div>
+            <div class="data-row" id="row-signup-phone-scan-enabled" style="display:none;">
+              <span class="data-label">扫号模式</span>
+              <div class="data-inline setting-pair">
+                <div class="setting-group setting-group-primary">
+                  <label class="toggle-switch" for="input-signup-phone-scan-enabled" title="开启后按价格上限批量购买手机号并写入注册手机号池">
+                    <input type="checkbox" id="input-signup-phone-scan-enabled" />
+                    <span class="toggle-switch-track" aria-hidden="true">
+                      <span class="toggle-switch-thumb"></span>
+                    </span>
+                  </label>
+                </div>
+                <span class="setting-caption">池空后按价格上限继续扫号</span>
+              </div>
+            </div>
+            <div class="data-row" id="row-signup-phone-scan-settings" style="display:none;">
+              <span class="data-label">扫号参数</span>
+              <div class="data-inline hero-sms-settings-grid">
+                <div class="hero-sms-settings-cell">
+                  <span class="hero-sms-settings-caption">轮询间隔</span>
+                  <div class="setting-controls">
+                    <input type="number" id="input-signup-phone-scan-poll-seconds" class="data-input auto-delay-input" value="5" min="1" max="300" step="1" title="扫号时没有可买号码后的等待秒数" />
+                    <span class="data-unit">秒</span>
+                  </div>
+                </div>
+                <div class="hero-sms-settings-cell">
+                  <span class="hero-sms-settings-caption">买号数量</span>
+                  <div class="setting-controls">
+                    <input type="number" id="input-signup-phone-scan-target-count" class="data-input auto-delay-input" value="10" min="1" max="100" step="1" title="每次扫号补满到手机号池的目标数量" />
+                    <span class="data-unit">个</span>
+                  </div>
+                </div>
+              </div>
+            </div>
             <div class="data-row" id="row-account-run-history-helper-base-url" style="display:none;">
               <span class="data-label">同步服务</span>
               <input type="text" id="input-account-run-history-helper-base-url" class="data-input mono"
                 placeholder="http://127.0.0.1:17373" />
+            </div>
+            <div class="data-row" id="row-hosted-sms-settings-mode" style="display:none;">
+              <span class="data-label">接码方式</span>
+              <div id="hosted-sms-settings-mode-group" class="choice-group" role="group" aria-label="接码方式">
+                <button type="button" class="choice-btn" data-hosted-sms-settings-mode="phone">手机号接码</button>
+                <button type="button" class="choice-btn" data-hosted-sms-settings-mode="pp-hosted-sms">pp无卡接码</button>
+              </div>
             </div>
             <div class="data-row" id="row-phone-sms-provider" style="display:none;">
               <span class="data-label">接码服务商</span>
@@ -527,6 +567,26 @@
             <div class="data-row" id="row-hero-sms-platform" style="display:none;">
               <span class="data-label">接码平台</span>
               <span id="display-hero-sms-platform" class="data-value mono">HeroSMS / OpenAI / Thailand</span>
+            </div>
+            <div class="data-row" id="row-pp-hosted-sms-title" style="display:none;">
+              <span class="data-label">接码类型</span>
+              <span class="data-value mono">pp无卡接码</span>
+            </div>
+            <div class="data-row" id="row-hosted-sms-pool-select" style="display:none;">
+              <span class="data-label">验证码接口</span>
+              <div class="data-inline data-value-actions">
+                <select id="select-hosted-sms-pool-account" class="data-select mono">
+                  <option value="">请先添加验证码接口</option>
+                </select>
+                <button id="btn-add-hosted-sms-pool-account" class="btn btn-outline btn-sm data-inline-btn" type="button">添加</button>
+              </div>
+            </div>
+            <div class="data-row" id="row-hosted-sms-manual-fetch" style="display:none;">
+              <span class="data-label">手动取码</span>
+              <div class="data-inline data-value-actions">
+                <button id="btn-fetch-hosted-sms-code" class="btn btn-outline btn-sm data-inline-btn" type="button">手动取码</button>
+                <span id="display-hosted-sms-code" class="data-value data-value-fill mono">未获取</span>
+              </div>
             </div>
             <div class="data-row" id="row-hero-sms-country" style="display:none;">
               <span class="data-label">国家优先级</span>

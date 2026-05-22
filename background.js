@@ -324,6 +324,8 @@ const HERO_SMS_ACQUIRE_PRIORITY_COUNTRY = 'country';
 const HERO_SMS_ACQUIRE_PRIORITY_PRICE = 'price';
 const DEFAULT_HERO_SMS_ACQUIRE_PRIORITY = HERO_SMS_ACQUIRE_PRIORITY_COUNTRY;
 const DEFAULT_HERO_SMS_MIN_PRICE = '0.05';
+const DEFAULT_SIGNUP_PHONE_SCAN_POLL_SECONDS = 5;
+const DEFAULT_SIGNUP_PHONE_SCAN_TARGET_COUNT = 10;
 const DISPLAY_TIMEZONE = 'Asia/Shanghai';
 const MICROSOFT_TOKEN_DNR_RULE_ID = 1001;
 const PERSISTENT_ALIAS_STATE_KEYS = [
@@ -507,8 +509,14 @@ const PERSISTED_SETTING_DEFAULTS = {
   phoneVerificationEnabled: false,
   signupPhonePoolEnabled: false,
   signupPhonePool: [],
+  signupPhoneScanEnabled: false,
+  signupPhoneScanPollSeconds: DEFAULT_SIGNUP_PHONE_SCAN_POLL_SECONDS,
+  signupPhoneScanTargetCount: DEFAULT_SIGNUP_PHONE_SCAN_TARGET_COUNT,
   phoneSmsProvider: DEFAULT_PHONE_SMS_PROVIDER,
   phoneSmsProviderOrder: DEFAULT_PHONE_SMS_PROVIDER_ORDER,
+  hostedSmsPool: [],
+  currentHostedSmsPoolId: '',
+  hostedSmsSettingsMode: 'phone',
   verificationResendCount: DEFAULT_VERIFICATION_RESEND_COUNT,
   phoneVerificationReplacementLimit: DEFAULT_PHONE_VERIFICATION_REPLACEMENT_LIMIT,
   phoneCodeWaitSeconds: DEFAULT_PHONE_CODE_WAIT_SECONDS,
@@ -1598,6 +1606,227 @@ function normalizeSignupPhonePool(value = []) {
   return normalized;
 }
 
+function hashStringForHostedSmsPool(value = '') {
+  let hash = 0;
+  const source = String(value || '');
+  for (let index = 0; index < source.length; index += 1) {
+    hash = ((hash << 5) - hash) + source.charCodeAt(index);
+    hash |= 0;
+  }
+  return hash;
+}
+
+function normalizeHostedSmsPool(value = []) {
+  const source = Array.isArray(value)
+    ? value
+    : String(value || '')
+      .split(/[\r\n]+/)
+      .map((entry) => String(entry || '').trim())
+      .filter(Boolean);
+  const seen = new Set();
+  const normalized = [];
+
+  source.forEach((entry, index) => {
+    let phoneNumber = '';
+    let url = '';
+    let id = '';
+    let label = '';
+
+    if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+      phoneNumber = String(entry.phoneNumber || entry.phone || entry.number || '').trim();
+      url = String(entry.url || entry.smsUrl || entry.hostedSmsUrl || '').trim();
+      id = String(entry.id || '').trim();
+      label = String(entry.label || entry.name || '').trim();
+    } else {
+      const text = String(entry || '').trim();
+      const parts = text.split(/\s*-{2,}\s*/);
+      if (parts.length >= 2) {
+        phoneNumber = String(parts.shift() || '').trim();
+        url = parts.join('----').trim();
+      } else {
+        const match = text.match(/^(\+?\d[\d\s().-]{5,})\s+(https?:\/\/\S+)$/i);
+        if (match) {
+          phoneNumber = String(match[1] || '').trim();
+          url = String(match[2] || '').trim();
+        }
+      }
+    }
+
+    if (!phoneNumber || !url) {
+      return;
+    }
+    try {
+      const parsed = new URL(url);
+      if (!['http:', 'https:'].includes(parsed.protocol)) {
+        return;
+      }
+      url = parsed.toString();
+    } catch {
+      return;
+    }
+
+    if (seen.has(url)) {
+      return;
+    }
+    seen.add(url);
+    normalized.push({
+      id: id || `hosted-${index + 1}-${Math.abs(hashStringForHostedSmsPool(`${phoneNumber}|${url}`))}`,
+      phoneNumber,
+      url,
+      label,
+    });
+  });
+
+  return normalized;
+}
+
+function parseHostedSmsPayload(text) {
+  const trimmed = String(text || '').trim();
+  if (!trimmed) {
+    return '';
+  }
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return trimmed;
+  }
+}
+
+function cleanHostedOtpCandidate(value, { allowFourToEight = true } = {}) {
+  const code = String(value || '').replace(/\D/g, '');
+  if (allowFourToEight ? /^[0-9]{4,8}$/.test(code) : /^[0-9]{6}$/.test(code)) {
+    return code;
+  }
+  return '';
+}
+
+function extractHostedOtpFromText(text) {
+  const source = String(text || '');
+  if (!source.trim()) {
+    return '';
+  }
+  const patterns = [
+    /(?:otp|one[-\s]*time|verification|verify|security\s*code|code|kode|verifikasi|gopay|whatsapp|openai|验证码|驗證碼)[^\d|\n\r]{0,80}(\d{4,8})(?!\d)/gis,
+    /(?<!\d)(\d{4,8})(?!\d)[^|\n\r]{0,80}(?:otp|one[-\s]*time|verification|verify|security\s*code|code|kode|verifikasi|gopay|whatsapp|openai|验证码|驗證碼)/gis,
+    /(?<!\d)(\d{6})(?!\d)/g,
+  ];
+  for (const pattern of patterns) {
+    const matches = Array.from(source.matchAll(pattern));
+    for (let matchIndex = matches.length - 1; matchIndex >= 0; matchIndex -= 1) {
+      const match = matches[matchIndex];
+      const groups = match.length > 1 ? match.slice(1) : [match[0]];
+      for (let groupIndex = groups.length - 1; groupIndex >= 0; groupIndex -= 1) {
+        const code = cleanHostedOtpCandidate(groups[groupIndex], {
+          allowFourToEight: pattern !== patterns[2],
+        });
+        if (code) {
+          return code;
+        }
+      }
+    }
+  }
+  return '';
+}
+
+function iterHostedSmsMessageCandidates(payload, output = [], depth = 0) {
+  if (depth > 8 || payload === null || payload === undefined) {
+    return output;
+  }
+  if (typeof payload === 'string') {
+    const text = payload.trim();
+    if (text) {
+      output.push(text);
+    }
+    return output;
+  }
+  if (Array.isArray(payload)) {
+    payload.forEach((entry) => iterHostedSmsMessageCandidates(entry, output, depth + 1));
+    return output;
+  }
+  if (typeof payload === 'object') {
+    const pieces = [];
+    ['otp', 'code', 'sms', 'body', 'message', 'text', 'content', 'caption', 'raw'].forEach((key) => {
+      if (!Object.prototype.hasOwnProperty.call(payload, key)) {
+        return;
+      }
+      const value = payload[key];
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        const nestedText = value.body ?? value.text ?? value.message ?? value.content ?? value.code ?? value.otp;
+        if (nestedText !== undefined && nestedText !== null && String(nestedText).trim()) {
+          pieces.push(String(nestedText));
+        }
+      } else if (typeof value === 'string' || typeof value === 'number') {
+        pieces.push(String(value));
+      }
+    });
+    if (pieces.length) {
+      output.push(pieces.join(' '));
+    }
+    Object.values(payload).forEach((value) => iterHostedSmsMessageCandidates(value, output, depth + 1));
+  }
+  return output;
+}
+
+function extractHostedSmsCode(payload) {
+  if (typeof payload === 'string') {
+    return extractHostedOtpFromText(payload);
+  }
+  if (typeof payload === 'number') {
+    return cleanHostedOtpCandidate(payload);
+  }
+  let found = '';
+  for (const text of iterHostedSmsMessageCandidates(payload, [])) {
+    const code = extractHostedOtpFromText(text);
+    if (code) {
+      found = code;
+    }
+  }
+  return found;
+}
+
+async function fetchHostedSmsCodeFromUrl(url) {
+  const normalizedUrl = String(url || '').trim();
+  if (!normalizedUrl) {
+    throw new Error('请先选择验证码接口。');
+  }
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(normalizedUrl);
+  } catch {
+    throw new Error('验证码接口链接格式无效。');
+  }
+  if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+    throw new Error('验证码接口只支持 http/https 链接。');
+  }
+
+  const controller = typeof AbortController === 'function' ? new AbortController() : null;
+  const timeoutId = controller ? setTimeout(() => controller.abort(), 20000) : null;
+  try {
+    const response = await fetch(parsedUrl.toString(), {
+      method: 'GET',
+      signal: controller?.signal,
+    });
+    const text = await response.text();
+    const payload = parseHostedSmsPayload(text);
+    if (!response.ok) {
+      throw new Error(`验证码接口请求失败：HTTP ${response.status}`);
+    }
+    return {
+      code: extractHostedSmsCode(payload),
+      rawText: typeof payload === 'string' ? payload : JSON.stringify(payload || {}),
+    };
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error('验证码接口请求超时。');
+    }
+    throw error;
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
 function normalizeFiveSimOperator(value = '', fallback = DEFAULT_FIVE_SIM_OPERATOR) {
   return normalizeFiveSimCountryCode(value, fallback);
 }
@@ -1772,13 +2001,34 @@ function normalizePersistentSettingValue(key, value) {
     case 'autoRunDelayEnabled':
     case 'phoneVerificationEnabled':
     case 'signupPhonePoolEnabled':
+    case 'signupPhoneScanEnabled':
     case 'plusModeEnabled':
     case 'gptOnlyModeEnabled':
       return Boolean(value);
+    case 'signupPhoneScanPollSeconds':
+      return Math.max(1, Math.min(300, Math.floor(Number(value) || (
+        typeof DEFAULT_SIGNUP_PHONE_SCAN_POLL_SECONDS !== 'undefined'
+          ? DEFAULT_SIGNUP_PHONE_SCAN_POLL_SECONDS
+          : 5
+      ))));
+    case 'signupPhoneScanTargetCount':
+      return Math.max(1, Math.min(100, Math.floor(Number(value) || (
+        typeof DEFAULT_SIGNUP_PHONE_SCAN_TARGET_COUNT !== 'undefined'
+          ? DEFAULT_SIGNUP_PHONE_SCAN_TARGET_COUNT
+          : 10
+      ))));
     case 'phoneSmsProvider':
       return normalizePhoneSmsProvider(value);
     case 'phoneSmsProviderOrder':
       return normalizePhoneSmsProviderOrder(value, DEFAULT_PHONE_SMS_PROVIDER_ORDER);
+    case 'hostedSmsPool':
+      return normalizeHostedSmsPool(value);
+    case 'currentHostedSmsPoolId':
+      return String(value || '').trim();
+    case 'hostedSmsSettingsMode': {
+      const normalized = String(value || '').trim().toLowerCase();
+      return normalized === 'pp-hosted-sms' ? 'pp-hosted-sms' : 'phone';
+    }
     case 'autoRunFallbackThreadIntervalMinutes':
       return normalizeAutoRunFallbackThreadIntervalMinutes(value);
     case 'autoRunDelayMinutes':
@@ -7768,6 +8018,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 async function handleMessage(message, sender) {
+  if (message?.type === 'FETCH_HOSTED_SMS_CODE') {
+    const result = await fetchHostedSmsCodeFromUrl(message.payload?.url || '');
+    return { ok: true, ...result };
+  }
   return messageRouter.handleMessage(message, sender);
 }
 
